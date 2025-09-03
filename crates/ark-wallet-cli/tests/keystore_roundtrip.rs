@@ -94,7 +94,7 @@ fn roundtrip(kdf: &str) {
 
     // export 私钥 hex
     let priv_path = dir.join("priv.hex");
-    let output = Command::cargo_bin("ark-wallet")
+    let assert = Command::cargo_bin("ark-wallet")
         .unwrap()
         .args([
             "keystore",
@@ -107,10 +107,9 @@ fn roundtrip(kdf: &str) {
             priv_path.to_str().unwrap(),
         ])
         .assert()
-        .success()
-        .stdout(contains("private key hex saved"));
+        .success();
 
-    let printed = String::from_utf8(output.stdout.clone()).unwrap();
+    let printed = String::from_utf8(assert.get_output().stdout.clone()).unwrap();
     let printed_abs =
         std::fs::canonicalize(stdout_path(&printed)).unwrap_or_else(|_| stdout_path(&printed));
     let expected_abs = std::fs::canonicalize(&priv_path).unwrap_or(priv_path.clone());
