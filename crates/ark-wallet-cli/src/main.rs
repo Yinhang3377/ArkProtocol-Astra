@@ -1,6 +1,6 @@
 use bip39::Language;
-use clap::{ArgAction, Parser, Subcommand};
-use zeroize::{Zeroize, Zeroizing};
+use clap::{ ArgAction, Parser, Subcommand };
+use zeroize::{ Zeroize, Zeroizing };
 
 // 引入内部模块
 mod wallet;
@@ -202,7 +202,7 @@ fn now_rfc3339() -> String {
 }
 
 fn read_password_from_stdin() -> anyhow::Result<Zeroizing<String>> {
-    use std::io::{self, Read};
+    use std::io::{ self, Read };
     let mut s = String::new();
     io::stdin().read_to_string(&mut s)?;
     let s = s.trim_end_matches(&['\r', '\n'][..]).to_string();
@@ -218,7 +218,7 @@ fn read_password_interactive(prompt: &str) -> anyhow::Result<Zeroizing<String>> 
         if std::env::var_os("ARK_WALLET_WARN_NO_TTY").is_some() {
             eprintln!("检测到非交互环境：将从 STDIN 读取密码（建议改用 --password-stdin）");
         }
-        use std::io::{self, BufRead};
+        use std::io::{ self, BufRead };
         let mut line = String::new();
         io::stdin().lock().read_line(&mut line)?;
         let pw = line.trim_end_matches(&['\r', '\n'][..]).to_string();
@@ -233,7 +233,7 @@ fn read_password_interactive(prompt: &str) -> anyhow::Result<Zeroizing<String>> 
 fn resolve_password(
     pw: Option<String>,
     from_stdin: bool,
-    prompt: bool,
+    prompt: bool
 ) -> anyhow::Result<Zeroizing<String>> {
     let sources = (pw.is_some() as u8) + (from_stdin as u8) + (prompt as u8);
     if sources == 0 {
@@ -260,7 +260,7 @@ fn resolve_password_create(
     pw: Option<String>,
     from_stdin: bool,
     prompt: bool,
-    confirm: bool,
+    confirm: bool
 ) -> anyhow::Result<Zeroizing<String>> {
     let pwd = resolve_password(pw, from_stdin, prompt)?;
     if confirm {
@@ -288,11 +288,7 @@ fn main() -> anyhow::Result<()> {
 
     let cli = Cli::parse();
     match cli.cmd {
-        Cmd::MnemonicNew {
-            lang,
-            words,
-            passphrase,
-        } => {
+        Cmd::MnemonicNew { lang, words, passphrase } => {
             use bip39::Mnemonic;
             let lang = parse_lang(&lang);
             let entropy_bytes = match words {
@@ -325,16 +321,9 @@ fn main() -> anyhow::Result<()> {
             seed.zeroize();
         }
 
-        Cmd::MnemonicImport {
-            mnemonic,
-            mnemonic_file,
-            lang,
-            passphrase,
-            path,
-            full,
-        } => {
-            use bip32::{DerivationPath, XPrv};
-            use sha2::{Digest, Sha256};
+        Cmd::MnemonicImport { mnemonic, mnemonic_file, lang, passphrase, path, full } => {
+            use bip32::{ DerivationPath, XPrv };
+            use sha2::{ Digest, Sha256 };
 
             let lang = parse_lang(&lang);
             let mut mn_text = if let Some(file) = mnemonic_file {
@@ -414,7 +403,7 @@ fn main() -> anyhow::Result<()> {
                         lang,
                         &mn_text,
                         pass.as_str(),
-                        &path,
+                        &path
                     )?;
                     let address = wallet::address::from_pubkey(&pk33);
                     // 清理助记词文本
@@ -427,7 +416,7 @@ fn main() -> anyhow::Result<()> {
                         password,
                         password_stdin,
                         password_prompt,
-                        password_confirm,
+                        password_confirm
                     )?;
                     if password.len() < 8 {
                         anyhow::bail!("password too short (min 8 chars)");
@@ -440,7 +429,7 @@ fn main() -> anyhow::Result<()> {
                         iterations,
                         n,
                         r,
-                        p,
+                        p
                     )?;
                     // 为 JSON 输出保留派生路径
                     let path_str = path.clone();
@@ -459,7 +448,8 @@ fn main() -> anyhow::Result<()> {
                     }
                     fs::write(p, json)?;
                     if cli.json {
-                        let out_json = serde_json::json!({
+                        let out_json =
+                            serde_json::json!({
                             "address": ks.address,
                             "path": path_str,
                             "file": p.to_string_lossy()
@@ -476,13 +466,7 @@ fn main() -> anyhow::Result<()> {
                     }
                 }
 
-                KsCmd::Import {
-                    file,
-                    password,
-                    password_stdin,
-                    password_prompt,
-                    full,
-                } => {
+                KsCmd::Import { file, password, password_stdin, password_prompt, full } => {
                     let raw = fs::read_to_string(&file)?;
                     let ks: wallet::keystore::Keystore = serde_json::from_str(&raw)?;
                     if ks.version != wallet::keystore::VERSION {
@@ -495,7 +479,8 @@ fn main() -> anyhow::Result<()> {
                     let address = wallet::address::from_pubkey(&pk33);
 
                     if full || cli.json {
-                        let out = serde_json::json!({
+                        let out =
+                            serde_json::json!({
                             "address": address,
                             "path": ks.path,
                             "pubkey_hex": wallet::keystore::hex_lower(&pk33),
@@ -515,13 +500,7 @@ fn main() -> anyhow::Result<()> {
                     }
                 }
 
-                KsCmd::Export {
-                    file,
-                    password,
-                    password_stdin,
-                    password_prompt,
-                    out_priv,
-                } => {
+                KsCmd::Export { file, password, password_stdin, password_prompt, out_priv } => {
                     let raw = fs::read_to_string(&file)?;
                     let ks: wallet::keystore::Keystore = serde_json::from_str(&raw)?;
                     if ks.version != wallet::keystore::VERSION {
@@ -541,25 +520,24 @@ fn main() -> anyhow::Result<()> {
                             } else {
                                 std::env::current_dir()?.join(p)
                             };
-                            let out = serde_json::json!({ "privkey_hex": hex, "file": abs.to_string_lossy() });
+                            let out =
+                                serde_json::json!({ "privkey_hex": hex, "file": abs.to_string_lossy() });
                             println!("{}", serde_json::to_string_pretty(&out)?);
                         } else {
                             let out = serde_json::json!({ "privkey_hex": hex });
                             println!("{}", serde_json::to_string_pretty(&out)?);
                         }
-                    } else {
-                        if let Some(outp) = out_priv {
-                            std::fs::write(outp.as_str(), &hex)?;
-                            let p = std::path::Path::new(&outp);
-                            let abs = if p.is_absolute() {
-                                p.to_path_buf()
-                            } else {
-                                std::env::current_dir()?.join(p)
-                            };
-                            println!("private key hex saved: {}", abs.display());
+                    } else if let Some(outp) = out_priv {
+                        std::fs::write(outp.as_str(), &hex)?;
+                        let p = std::path::Path::new(&outp);
+                        let abs = if p.is_absolute() {
+                            p.to_path_buf()
                         } else {
-                            println!("{hex}");
-                        }
+                            std::env::current_dir()?.join(p)
+                        };
+                        println!("private key hex saved: {}", abs.display());
+                    } else {
+                        println!("{hex}");
                     }
 
                     // 擦除私钥
