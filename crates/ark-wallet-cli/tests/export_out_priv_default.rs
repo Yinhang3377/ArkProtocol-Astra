@@ -31,7 +31,7 @@ fn export_out_priv_default_filename() {
         .assert()
         .success();
 
-    // 不带值的 --out-priv，期待默认写入 privkey.hex，并使用 --json 输出
+    // 导出私钥（--out-priv 无值，默认 privkey.hex；同时 --json）
     let assert = Command::cargo_bin("ark-wallet")
         .unwrap()
         .current_dir(dir.path())
@@ -48,20 +48,16 @@ fn export_out_priv_default_filename() {
         .assert()
         .success();
 
-    // 从 JSON 输出中读取实际写入的文件路径
+    // 从 JSON 读取 file 字段
     let out = String::from_utf8(assert.get_output().stdout.clone()).unwrap();
     let v: Value = serde_json::from_str(&out).unwrap();
-    let file_str = v
-        .get("file")
-        .and_then(|x| x.as_str())
-        .unwrap();
+    let file_str = v.get("file").and_then(|x| x.as_str()).unwrap();
 
     let expected = dir.path().join("privkey.hex");
 
-    // 归一化后比较，兼容 macOS /var <-> /private/var 及 Windows \\?\ 前缀
-    let printed_abs = fs
-        ::canonicalize(PathBuf::from(file_str))
-        .unwrap_or_else(|_| PathBuf::from(file_str));
+    // 路径归一化后比较（兼容 macOS /var ↔ /private/var、Windows \\?\）
+    let printed_abs =
+        fs::canonicalize(PathBuf::from(file_str)).unwrap_or_else(|_| PathBuf::from(file_str));
     let expected_abs = fs::canonicalize(&expected).unwrap_or(expected.clone());
     assert_eq!(printed_abs, expected_abs);
 
