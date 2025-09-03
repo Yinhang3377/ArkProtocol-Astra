@@ -1,0 +1,16 @@
+[p2p]
+listen_addr = "/ip4/0.0.0.0/udp/30333/quic-v1"
+bootnodes = []
+
+[rpc]
+http = "127.0.0.1:8545"
+ws = "127.0.0.1:8546"
+grpc = "127.0.0.1:50051"
+metrics = "127.0.0.1:19100"   # 改成空闲端口
+health = "127.0.0.1:18080"    # 改成空闲端口
+
+[db]
+path = "data/db"
+
+[genesis]
+file = "config/genesis.json"

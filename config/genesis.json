@@ -1,0 +1,19 @@
+{
+  "chain_id": "ark-astra-1",
+  "genesis_time": "2025-09-15T00:00:00Z",
+  "params": {
+    "block_time_ms": 2000,
+    "epoch_blocks": 1800,
+    "gas_limit_block": 20000000,
+    "base_fee": "1000",
+    "gas_price_min": "1",
+    "staking": { "min_stake": "1000000000", "unbonding_epochs": 14, "max_validators": 64 },
+    "slashing": { "double_sign": "0.05", "downtime_epochs": 3 },
+    "wasm": { "max_code_size": 1048576, "aot": true, "deterministic": true }
+  },
+  "bootnodes": [],
+  "validators": [],
+  "balances": [],
+  "predeploy": [],
+  "feature_gates": { "wasm_vm": true, "evm": false, "ibc_bridge": false }
+}
