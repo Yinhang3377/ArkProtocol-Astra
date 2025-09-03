@@ -3,9 +3,11 @@ target/
 **/*.swp
 .vscode/
 .idea/
-.DS_Storetarget/
-**/*.rs.bk
-**/*.swp
-.vscode/
-.idea/
 .DS_Store
+keystore.json
+priv.hex
+pwd.txt
+*.pem
+*.key
+.env
+*.log
