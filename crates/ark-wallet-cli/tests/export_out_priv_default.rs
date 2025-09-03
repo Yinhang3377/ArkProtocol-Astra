@@ -49,9 +49,18 @@ fn export_out_priv_default_filename() {
 
     let out = String::from_utf8(assert.get_output().stdout.clone()).unwrap();
     let v: Value = serde_json::from_str(&out).unwrap();
-    let file = v.get("file").and_then(|x| x.as_str()).unwrap();
+    let file = v
+        .get("file")
+        .and_then(|x| x.as_str())
+        .unwrap();
     let expected = dir.path().join("privkey.hex");
     assert_eq!(file, expected.to_str().unwrap());
+
+    let printed = out.trim(); // 程序打印出来的路径字符串
+    let printed_path = std::path::PathBuf::from(printed);
+    let printed_abs = std::fs::canonicalize(&printed_path).unwrap_or(printed_path);
+    let expected_abs = std::fs::canonicalize(&expected).unwrap_or(expected.clone());
+    assert_eq!(printed_abs, expected_abs);
 
     assert!(expected.exists());
     let file_hex = fs::read_to_string(&expected).unwrap();
