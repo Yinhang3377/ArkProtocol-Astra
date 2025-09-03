@@ -1,0 +1,18 @@
+* text=auto
+
+# 强制源码/配置使用 LF
+*.rs   text eol=lf
+*.toml text eol=lf
+*.md   text eol=lf
+*.yml  text eol=lf
+*.yaml text eol=lf
+*.sh   text eol=lf
+
+# Windows 脚本保留 CRLF（如有）
+*.bat  text eol=crlf
+*.ps1  text eol=crlf
+
+# 二进制不做转换
+*.png -text
+*.jpg -text
+*.wasm -text
