@@ -1,25 +1,7 @@
 use assert_cmd::Command;
 use serde_json::Value;
-use std::path::PathBuf;
 use std::fs;
-
-fn extract_path_from_stdout(s: &str) -> PathBuf {
-    let t = s.trim();
-    if t.starts_with('{') {
-        // JSON 模式
-        let v: serde_json::Value = serde_json::from_str(t).expect("valid json");
-        let file = v
-            .get("file")
-            .and_then(|x| x.as_str())
-            .expect("file field");
-        PathBuf::from(file)
-    } else {
-        // 纯文本或带前缀文案
-        let prefix = "private key hex saved: ";
-        let p = t.strip_prefix(prefix).unwrap_or(t);
-        PathBuf::from(p)
-    }
-}
+use std::path::PathBuf;
 
 #[test]
 fn export_out_priv_default_filename() {
@@ -49,7 +31,7 @@ fn export_out_priv_default_filename() {
         .assert()
         .success();
 
-    // 不带值的 --out-priv，期待默认写入 privkey.hex
+    // 不带值的 --out-priv，期待默认写入 privkey.hex，并使用 --json 输出
     let assert = Command::cargo_bin("ark-wallet")
         .unwrap()
         .current_dir(dir.path())
@@ -66,21 +48,24 @@ fn export_out_priv_default_filename() {
         .assert()
         .success();
 
+    // 从 JSON 输出中读取实际写入的文件路径
     let out = String::from_utf8(assert.get_output().stdout.clone()).unwrap();
     let v: Value = serde_json::from_str(&out).unwrap();
-    let file = v
+    let file_str = v
         .get("file")
         .and_then(|x| x.as_str())
         .unwrap();
-    let expected = dir.path().join("privkey.hex");
-    assert_eq!(file, expected.to_str().unwrap());
 
-    let printed = out.trim(); // 程序打印出来的路径字符串
-    let printed_path = std::path::PathBuf::from(printed);
-    let printed_abs = std::fs::canonicalize(&printed_path).unwrap_or(printed_path);
-    let expected_abs = std::fs::canonicalize(&expected).unwrap_or(expected.clone());
+    let expected = dir.path().join("privkey.hex");
+
+    // 归一化后比较，兼容 macOS /var <-> /private/var 及 Windows \\?\ 前缀
+    let printed_abs = fs
+        ::canonicalize(PathBuf::from(file_str))
+        .unwrap_or_else(|_| PathBuf::from(file_str));
+    let expected_abs = fs::canonicalize(&expected).unwrap_or(expected.clone());
     assert_eq!(printed_abs, expected_abs);
 
+    // 文件内容与 JSON 中的 hex 一致
     assert!(expected.exists());
     let file_hex = fs::read_to_string(&expected).unwrap();
     let json_hex = v
