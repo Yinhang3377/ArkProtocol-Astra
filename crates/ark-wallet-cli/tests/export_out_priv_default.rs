@@ -1,6 +1,25 @@
 use assert_cmd::Command;
 use serde_json::Value;
+use std::path::PathBuf;
 use std::fs;
+
+fn extract_path_from_stdout(s: &str) -> PathBuf {
+    let t = s.trim();
+    if t.starts_with('{') {
+        // JSON 模式
+        let v: serde_json::Value = serde_json::from_str(t).expect("valid json");
+        let file = v
+            .get("file")
+            .and_then(|x| x.as_str())
+            .expect("file field");
+        PathBuf::from(file)
+    } else {
+        // 纯文本或带前缀文案
+        let prefix = "private key hex saved: ";
+        let p = t.strip_prefix(prefix).unwrap_or(t);
+        PathBuf::from(p)
+    }
+}
 
 #[test]
 fn export_out_priv_default_filename() {

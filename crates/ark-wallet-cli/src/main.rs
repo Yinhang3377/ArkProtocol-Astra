@@ -538,7 +538,7 @@ fn main() -> anyhow::Result<()> {
                                 std::env::current_dir().unwrap().join(p)
                             }
                         });
-                        println!("private key hex saved: {}", abs.display());
+                        println!("{}", abs.display());
                     } else {
                         println!("{hex}");
                     }
