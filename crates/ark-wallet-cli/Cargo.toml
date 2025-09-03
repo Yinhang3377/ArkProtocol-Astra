@@ -2,7 +2,7 @@
 name = "ark-wallet-cli"
 version = "0.1.0"
 edition = "2021"
-rust-version = "1.74"
+rust-version = "1.85"
 description = "Ark wallet CLI: mnemonic, HD derivation, keystore import/export"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/your/repo"
