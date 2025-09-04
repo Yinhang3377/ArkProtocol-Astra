@@ -1,15 +1,13 @@
 [package]
 name = "ark-wallet-cli"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 rust-version = "1.85"
 description = "Ark wallet CLI: mnemonic, HD derivation, keystore import/export"
-license-file = "LICENSE"
-publish = false
 repository = "https://github.com/Yinhang3377/ArkProtocol-Astra"
 readme = "README.md"
-keywords = ["wallet", "cli", "blockchain", "crypto"]
-categories = ["command-line-utilities", "cryptography"]
+license-file = "LICENSE"
+publish = false
 
 [features]
 default = ["zh"]
