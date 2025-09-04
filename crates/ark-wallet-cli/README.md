@@ -17,5 +17,10 @@ JSON 输出
 - export --json: { "privkey_hex" } 或 { "privkey_hex", "file" }
 
 注意
-- 非 TTY 下 --password-prompt 会回退从 STDIN 读取（设 ARK_WALLET_WARN_NO_TTY=1 可提示）。
+- 非 TTY下 --password-prompt 会回退从 STDIN 读取（设 ARK_WALLET_WARN_NO_TTY=1 可提示）。
 - 未加 --overwrite 且目标已存在会失败。
+
+## License / Usage
+This repository is source-available for viewing only. All rights reserved.
+You may not use, copy, modify, distribute, or publish this code without
+explicit written permission from the author.
