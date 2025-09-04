@@ -15,8 +15,8 @@
 //! - JSON 导出（包含 file 与 privkey_hex）：`ark-wallet --json keystore export --file ks.json --password "pwd" --out-priv priv.hex`
 
 use bip39::Language;
-use clap::{ ArgAction, Parser, Subcommand };
-use zeroize::{ Zeroize, Zeroizing };
+use clap::{ArgAction, Parser, Subcommand};
+use zeroize::{Zeroize, Zeroizing};
 
 // 引入内部模块
 mod wallet;
@@ -227,7 +227,7 @@ fn now_rfc3339() -> String {
 // - 去除末尾的 \r\n（Windows）或 \n（类 Unix）
 // - 使用 Zeroizing 包装，超出作用域时自动清零内存，降低泄露风险
 fn read_password_from_stdin() -> anyhow::Result<Zeroizing<String>> {
-    use std::io::{ self, Read };
+    use std::io::{self, Read};
     let mut s = String::new();
     io::stdin().read_to_string(&mut s)?;
     // 去除换行（支持 \r\n 和 \n）
@@ -247,7 +247,7 @@ fn read_password_interactive(prompt: &str) -> anyhow::Result<Zeroizing<String>> 
         if std::env::var_os("ARK_WALLET_WARN_NO_TTY").is_some() {
             eprintln!("检测到非交互环境：将从 STDIN 读取密码（建议改用 --password-stdin）");
         }
-        use std::io::{ self, BufRead };
+        use std::io::{self, BufRead};
         let mut line = String::new();
         io::stdin().lock().read_line(&mut line)?;
         let pw = line.trim_end_matches(&['\r', '\n'][..]).to_string();
@@ -266,7 +266,7 @@ fn read_password_interactive(prompt: &str) -> anyhow::Result<Zeroizing<String>> 
 fn resolve_password(
     pw: Option<String>,
     from_stdin: bool,
-    prompt: bool
+    prompt: bool,
 ) -> anyhow::Result<Zeroizing<String>> {
     // 以位加法统计来源数量（true 视为 1），确保恰好一个来源被选择
     let sources = (pw.is_some() as u8) + (from_stdin as u8) + (prompt as u8);
@@ -297,7 +297,7 @@ fn resolve_password_create(
     pw: Option<String>,
     from_stdin: bool,
     prompt: bool,
-    confirm: bool
+    confirm: bool,
 ) -> anyhow::Result<Zeroizing<String>> {
     let pwd = resolve_password(pw, from_stdin, prompt)?;
     if confirm {
@@ -329,7 +329,11 @@ fn main() -> anyhow::Result<()> {
 
     let cli = Cli::parse();
     match cli.cmd {
-        Cmd::MnemonicNew { lang, words, passphrase } => {
+        Cmd::MnemonicNew {
+            lang,
+            words,
+            passphrase,
+        } => {
             use bip39::Mnemonic;
             let lang = parse_lang(&lang);
             // BIP39 词数 -> 熵长度映射（12/15/18/21/24 -> 128/160/192/224/256 bit）
@@ -364,9 +368,16 @@ fn main() -> anyhow::Result<()> {
             seed.zeroize();
         }
 
-        Cmd::MnemonicImport { mnemonic, mnemonic_file, lang, passphrase, path, full } => {
-            use bip32::{ DerivationPath, XPrv };
-            use sha2::{ Digest, Sha256 };
+        Cmd::MnemonicImport {
+            mnemonic,
+            mnemonic_file,
+            lang,
+            passphrase,
+            path,
+            full,
+        } => {
+            use bip32::{DerivationPath, XPrv};
+            use sha2::{Digest, Sha256};
 
             let lang = parse_lang(&lang);
             // 读取助记词来源：文件优先，否则使用命令行参数；均为空时报错
@@ -449,7 +460,7 @@ fn main() -> anyhow::Result<()> {
                         lang,
                         &mn_text,
                         pass.as_str(),
-                        &path
+                        &path,
                     )?;
                     let address = wallet::address::from_pubkey(&pk33);
                     // 助记词文本不再需要，尽早清理
@@ -462,7 +473,7 @@ fn main() -> anyhow::Result<()> {
                         password,
                         password_stdin,
                         password_prompt,
-                        password_confirm
+                        password_confirm,
                     )?;
                     // 最低长度约束（示例值：8），可根据安全要求调整
                     if password.len() < 8 {
@@ -477,7 +488,7 @@ fn main() -> anyhow::Result<()> {
                         iterations,
                         n,
                         r,
-                        p
+                        p,
                     )?;
                     let path_str = path.clone(); // JSON 输出中保留原始派生路径
                     let ks = wallet::keystore::Keystore {
@@ -496,8 +507,7 @@ fn main() -> anyhow::Result<()> {
                     fs::write(p, json)?;
                     if cli.json {
                         // JSON 模式：输出地址、派生路径与保存的文件名
-                        let out_json =
-                            serde_json::json!({
+                        let out_json = serde_json::json!({
                             "address": ks.address,
                             "path": path_str,
                             "file": p.to_string_lossy()
@@ -515,7 +525,13 @@ fn main() -> anyhow::Result<()> {
                     }
                 }
 
-                KsCmd::Import { file, password, password_stdin, password_prompt, full } => {
+                KsCmd::Import {
+                    file,
+                    password,
+                    password_stdin,
+                    password_prompt,
+                    full,
+                } => {
                     // 读取并反序列化 keystore；版本不兼容直接拒绝
                     let raw = fs::read_to_string(&file)?;
                     let ks: wallet::keystore::Keystore = serde_json::from_str(&raw)?;
@@ -531,8 +547,7 @@ fn main() -> anyhow::Result<()> {
 
                     if full || cli.json {
                         // 打印更多校验信息，包含 keystore 中记录的公钥 hex 与当前计算的是否一致
-                        let out =
-                            serde_json::json!({
+                        let out = serde_json::json!({
                             "address": address,
                             "path": ks.path,
                             "pubkey_hex": wallet::keystore::hex_lower(&pk33),
@@ -552,7 +567,13 @@ fn main() -> anyhow::Result<()> {
                     }
                 }
 
-                KsCmd::Export { file, password, password_stdin, password_prompt, out_priv } => {
+                KsCmd::Export {
+                    file,
+                    password,
+                    password_stdin,
+                    password_prompt,
+                    out_priv,
+                } => {
                     // 加载 keystore 并校验版本
                     let raw = fs::read_to_string(&file)?;
                     let ks: wallet::keystore::Keystore = serde_json::from_str(&raw)?;
@@ -576,8 +597,7 @@ fn main() -> anyhow::Result<()> {
                             } else {
                                 std::env::current_dir()?.join(p)
                             };
-                            let out =
-                                serde_json::json!({ "privkey_hex": hex, "file": abs.to_string_lossy() });
+                            let out = serde_json::json!({ "privkey_hex": hex, "file": abs.to_string_lossy() });
                             println!("{}", serde_json::to_string_pretty(&out)?);
                         } else {
                             // 仅返回私钥 hex（不写文件）
