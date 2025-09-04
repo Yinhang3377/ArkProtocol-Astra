@@ -41,7 +41,8 @@ pub fn secure_atomic_write<P: AsRef<Path>>(path: P, bytes: &[u8]) -> io::Result<
         let _ = fs::set_permissions(path, fs::Permissions::from_mode(0o600));
     }
 
-    fs::canonicalize(path).or_else(|_| {
+    // 规范化返回（使用 dunce 避免 Windows 下 \\?\ 前缀）
+    dunce::canonicalize(path).or_else(|_| {
         if path.is_absolute() {
             Ok(path.to_path_buf())
         } else {

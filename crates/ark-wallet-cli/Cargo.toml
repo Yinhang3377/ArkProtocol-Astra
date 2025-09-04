@@ -30,6 +30,7 @@ chrono = { workspace = true }
 dialoguer = "0.12"
 console = "0.15"
 thiserror = "1"
+dunce = "1"
 
 [[bin]]
 name = "ark-wallet"
