@@ -31,7 +31,7 @@ k256 = { workspace = true }
 zeroize = { workspace = true }
 chrono = { workspace = true }
 dialoguer = "0.12"
-console = "0.15"
+console = "0.16"
 
 [[bin]]
 name = "ark-wallet"
