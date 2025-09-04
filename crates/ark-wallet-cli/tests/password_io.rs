@@ -1,3 +1,7 @@
+//! 测试：STDIN 口令输入（学习注释）
+//! - 目标：--password-stdin 可创建并随后成功导入 keystore
+//! - 方法：通过管道传入口令，分别执行 create 与 import 并断言成功
+
 use assert_cmd::Command;
 use predicates::str::contains;
 use std::fs;

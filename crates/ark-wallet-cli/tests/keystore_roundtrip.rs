@@ -1,3 +1,8 @@
+//! 测试：keystore 加密/解密回环（学习注释）
+//! - 覆盖两种 KDF：scrypt 与 pbkdf2
+//! - 目标：解密结果与原始明文私钥一致，证明参数与实现匹配
+//! - 注意：使用固定测试口令与确定性输入，避免随机性引入不稳定
+
 use assert_cmd::prelude::*;
 use predicates::str::contains;
 use serde_json::Value;

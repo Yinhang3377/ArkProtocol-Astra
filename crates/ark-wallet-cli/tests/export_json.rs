@@ -1,3 +1,8 @@
+//! 测试：keystore export 的 JSON 输出（学习注释）
+//! - export_json_prints_privkey：--json 时 stdout 含 privkey_hex
+//! - export_json_writes_file_path：提供 --out-priv 时，JSON 含 file 且写入文件成功
+//! - 注意：不在测试中打印私钥明文到日志
+
 use assert_cmd::Command;
 use serde_json::Value;
 use std::{fs, path::Path};

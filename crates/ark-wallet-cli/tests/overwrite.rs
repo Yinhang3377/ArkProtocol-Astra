@@ -1,3 +1,7 @@
+//! 测试：创建 keystore 时的覆盖策略（学习注释）
+//! - 目标：目标文件已存在且未提供 --overwrite 时应失败
+//! - 方法：先创建占位文件，再调用 create 并断言失败
+
 use assert_cmd::Command;
 use predicates::str::contains;
 use tempfile::tempdir;

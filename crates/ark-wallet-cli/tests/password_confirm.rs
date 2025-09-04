@@ -1,3 +1,8 @@
+//! 测试：口令确认（学习注释）
+//! - mismatch_should_fail：两次输入不一致应失败
+//! - ok_should_succeed：一致时成功创建 keystore
+//! - 方法：使用对话式输入或通过管道模拟输入
+
 use assert_cmd::Command;
 use tempfile::tempdir;
 

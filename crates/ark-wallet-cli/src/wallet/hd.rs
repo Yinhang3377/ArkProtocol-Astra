@@ -1,9 +1,23 @@
+//! 分层确定性密钥（HD）派生（学习注释）
+//! - 助记词：bip39 多语言；可选 passphrase 参与种子计算（非 keystore 密码）
+//! - 种子 -> 扩展私钥：bip32::XPrv::derive_from_path
+//! - 路径：形如 m/44'/7777'/0'/0/0（由 CLI 传入，不在此模块硬编码）
+//! - 输出：32 字节私钥 + 压缩公钥（33 字节），以及调试/校验所需的派生信息
+//! - 安全：尽早 Zeroize 种子与私钥；仅在必要范围内持有敏感数据
+
 use anyhow::Result;
 use bip32::{DerivationPath, XPrv};
 use bip39::{Language, Mnemonic};
 use k256::ecdsa::SigningKey;
 
-/// 从助记词与 BIP32 路径派生 32B 私钥与压缩公钥
+/// 从助记词派生私钥与公钥（示例）
+/// - 参数：
+///   - lang：bip39::Language（语言）
+///   - mnemonic：助记词文本
+///   - passphrase：可选 BIP39 口令（参与 seed 计算）
+///   - path：BIP32 派生路径（如 m/44'/7777'/0'/0/0）
+/// - 返回：`(priv32, pk33, extra)` 其中 priv32 为 32 字节私钥，pk33 为压缩公钥
+/// - 说明：仅添加注释，不改变函数签名与逻辑
 pub fn derive_priv_from_mnemonic(
     lang: Language,
     mnemonic_text: &str,
@@ -28,8 +42,9 @@ pub fn derive_priv_from_mnemonic(
     Ok((priv32, pk33, m.to_string()))
 }
 
-/// 由 32B 私钥计算压缩公钥
-pub fn pubkey_from_privkey_secp256k1(priv32: &[u8; 32]) -> Result<[u8; 33]> {
+/// 由 32 字节私钥计算压缩公钥（33 字节）。
+/// - 用于 keystore 解密后还原地址、公钥等
+pub fn pubkey_from_privkey_secp256k1(priv32: &[u8; 32]) -> anyhow::Result<[u8; 33]> {
     // SigningKey::from_bytes 需要 FieldBytes 引用（priv32.into()）
     let sk = SigningKey::from_bytes(priv32.into())?;
     let vk = sk.verifying_key();

@@ -1,3 +1,7 @@
+//! 测试：keystore create 的 JSON 输出（学习注释）
+//! - 目标：--json 时应包含 address/path/file 字段
+//! - 方法：解析 stdout JSON，断言字段存在与基本格式正确
+
 use assert_cmd::Command;
 use serde_json::Value;
 use std::fs;

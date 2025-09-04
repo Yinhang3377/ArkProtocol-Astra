@@ -1,3 +1,8 @@
+//! 测试：助记词相关 CLI（学习注释）
+//! - mnemonic_new_json_en_12：英文 12 词模式下 JSON 输出格式
+//! - mnemonic_import_minimal_and_full：导入助记词时 minimal 与 full 输出的差异
+//! - 方法：解析 stdout JSON 或断言关键字段/长度
+
 use assert_cmd::prelude::*;
 use predicates::str::{contains, is_match};
 use std::process::Command;

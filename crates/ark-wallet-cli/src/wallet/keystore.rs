@@ -9,9 +9,12 @@
 //! API 概览：
 //! - encrypt(priv32, password, kdf, ...) -> (Crypto, nonce)
 //! - decrypt(keystore, password) -> priv32
-use aes_gcm::{ aead::{ Aead, KeyInit }, Aes256Gcm, Nonce };
+use aes_gcm::{
+    aead::{Aead, KeyInit},
+    Aes256Gcm, Nonce,
+};
 use anyhow::Result;
-use base64::{ engine::general_purpose::STANDARD as B64, Engine as _ };
+use base64::{engine::general_purpose::STANDARD as B64, Engine as _};
 use pbkdf2::pbkdf2_hmac;
 use scrypt as scrypt_crate;
 use scrypt_crate::Params as ScryptParams;
@@ -35,16 +38,16 @@ pub struct Keystore {
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct Crypto {
     pub cipher: String, // "AES-256-GCM"
-    pub kdf: String, // "scrypt" | "pbkdf2"
+    pub kdf: String,    // "scrypt" | "pbkdf2"
     pub kdfparams: KdfParams,
-    pub nonce: String, // base64(12B)
+    pub nonce: String,      // base64(12B)
     pub ciphertext: String, // base64(密文+GCM标签)
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct KdfParams {
     pub salt: String, // base64
-    pub dklen: u32, // 32
+    pub dklen: u32,   // 32
     // PBKDF2
     #[serde(skip_serializing_if = "Option::is_none")]
     pub iterations: Option<u32>,
@@ -80,7 +83,7 @@ pub fn encrypt(
     pbkdf2_iters: u32,
     n: u32,
     r: u32,
-    p: u32
+    p: u32,
 ) -> Result<(Crypto, [u8; 12])> {
     let mut salt = [0u8; 16];
     let mut nonce = [0u8; 12];

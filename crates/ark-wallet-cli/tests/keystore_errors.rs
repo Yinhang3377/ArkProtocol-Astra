@@ -1,3 +1,8 @@
+//! 测试：错误输入与失败路径（学习注释）
+//! - mnemonic_import_requires_input：未提供 `--mnemonic/--mnemonic-file` 应报错
+//! - import_wrong_password_should_fail：keystore 解密口令错误应失败（AEAD 验证失败）
+//! - 方法：断言非零退出码与错误消息片段，确保 CLI 早失败、清晰报错
+
 use assert_cmd::prelude::*;
 use predicates::str::contains;
 use std::{fs, process::Command};
