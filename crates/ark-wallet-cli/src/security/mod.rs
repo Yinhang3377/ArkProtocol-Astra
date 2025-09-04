@@ -4,6 +4,9 @@ pub mod errors;
 pub mod fs;
 pub mod kdf;
 
+#[allow(unused_imports)]
 pub use codec::{b58check_decode, b58check_encode};
+#[allow(unused_imports)]
 pub use fs::secure_atomic_write;
+#[allow(unused_imports)]
 pub use kdf::{validate_kdf_choice, validate_kdf_params, KdfKind};
