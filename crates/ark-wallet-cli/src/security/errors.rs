@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! 统一错误（占位，可逐步替换 anyhow 文本）。
 #[derive(thiserror::Error, Debug)]
 pub enum SecurityError {

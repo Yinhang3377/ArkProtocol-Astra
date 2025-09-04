@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! KDF 选择与参数下限校验。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum KdfKind {

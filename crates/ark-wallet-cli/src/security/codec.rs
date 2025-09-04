@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! 编码与校验：Base58Check。
 use sha2::{Digest, Sha256};
 

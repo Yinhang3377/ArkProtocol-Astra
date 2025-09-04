@@ -17,8 +17,10 @@ pub fn from_pubkey(pk_compressed: &[u8]) -> String {
 }
 
 /// 推荐：带版本与校验和的 Base58Check 地址
+#[allow(dead_code)]
 pub const ADDRESS_VERSION: u8 = 0x23;
 
+#[allow(dead_code)]
 pub fn from_pubkey_b58check(pk_compressed: &[u8]) -> String {
     let h = sha2::Sha256::digest(pk_compressed);
     crate::security::b58check_encode(ADDRESS_VERSION, &h[..20])

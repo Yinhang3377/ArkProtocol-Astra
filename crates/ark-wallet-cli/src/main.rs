@@ -505,18 +505,17 @@ fn main() -> anyhow::Result<()> {
                     if p.exists() && !overwrite {
                         anyhow::bail!("file exists: {out}. Use --overwrite to replace");
                     }
-                    fs::write(p, json)?;
+                    // 使用安全原子写入，返回规范化绝对路径
+                    let out_abs = crate::security::secure_atomic_write(p, json.as_bytes())?;
                     if cli.json {
-                        // JSON 模式：输出地址、派生路径与保存的文件名
                         let out_json = serde_json::json!({
                             "address": ks.address,
                             "path": path_str,
-                            "file": p.to_string_lossy()
+                            "file": out_abs.to_string_lossy()
                         });
                         println!("{}", serde_json::to_string_pretty(&out_json)?);
                     } else {
-                        // 人类可读模式：简洁提示
-                        println!("keystore saved: {}", p.display());
+                        println!("keystore saved: {}", out_abs.display());
                     }
 
                     // 擦除私钥（Zeroize）
@@ -590,14 +589,7 @@ fn main() -> anyhow::Result<()> {
                     if cli.json {
                         if let Some(outp) = out_priv {
                             // 写入文件，同时在 JSON 中返回规范化（绝对）路径与私钥 hex
-                            std::fs::write(outp.as_str(), &hex)?;
-                            let p = std::path::Path::new(&outp);
-                            // 不调用 canonicalize（避免某些环境下失败），但确保为绝对路径
-                            let abs = if p.is_absolute() {
-                                p.to_path_buf()
-                            } else {
-                                std::env::current_dir()?.join(p)
-                            };
+                            let abs = crate::security::secure_atomic_write(&outp, hex.as_bytes())?;
                             let out = serde_json::json!({ "privkey_hex": hex, "file": abs.to_string_lossy() });
                             println!("{}", serde_json::to_string_pretty(&out)?);
                         } else {
@@ -607,16 +599,7 @@ fn main() -> anyhow::Result<()> {
                         }
                     } else if let Some(outp) = out_priv {
                         // 非 JSON 模式：写入文件，并在 stdout 打印规范化路径（用于管道/测试消费）
-                        std::fs::write(outp.as_str(), &hex)?;
-                        let p = std::path::Path::new(&outp);
-                        // 优先尝试 canonicalize；失败则根据相对/绝对路径构造退路
-                        let abs = std::fs::canonicalize(p).unwrap_or_else(|_| {
-                            if p.is_absolute() {
-                                p.to_path_buf()
-                            } else {
-                                std::env::current_dir().unwrap().join(p)
-                            }
-                        });
+                        let abs = crate::security::secure_atomic_write(&outp, hex.as_bytes())?;
                         println!("{}", abs.display());
                     } else {
                         // 仅打印 hex 到 stdout
