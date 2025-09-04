@@ -19,6 +19,7 @@ use clap::{ArgAction, Parser, Subcommand};
 use zeroize::{Zeroize, Zeroizing};
 
 // 引入内部模块
+mod security;
 mod wallet;
 
 /// 解析命令行传入的语言代码为 bip39::Language。
