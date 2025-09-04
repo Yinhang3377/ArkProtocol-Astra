@@ -1,3 +1,14 @@
+//! Keystore 加密与格式（学习注释）
+//! - 明文：32 字节私钥（k256）
+//! - KDF：PBKDF2 或 Scrypt（参数：iterations / n, r, p）
+//! - 对称加密：AES-GCM（附带随机 nonce 与认证标签）
+//! - JSON 字段：address、path、pubkey_hex、crypto（含 kdf 与 cipher 参数）
+//! - 版本：通过 VERSION 常量控制兼容性；不兼容版本应拒绝解析
+//! - 安全：敏感数据（priv32、派生密钥）使用 Zeroize 及时清理
+//!
+//! API 概览：
+//! - encrypt(priv32, password, kdf, ...) -> (Crypto, nonce)
+//! - decrypt(keystore, password) -> priv32
 use aes_gcm::{
     aead::{Aead, KeyInit},
     Aes256Gcm, Nonce,
@@ -56,43 +67,15 @@ pub fn b64d(s: &str) -> Result<Vec<u8>> {
     Ok(B64.decode(s)?)
 }
 
-/// 小写十六进制
-pub fn hex_lower(data: &[u8]) -> String {
-    let mut s = String::with_capacity(data.len() * 2);
-    for &b in data {
-        use core::fmt::Write;
-        let _ = write!(s, "{b:02x}");
-    }
-    s
-}
-
-/// KDF 派生 32B key
-fn derive_key(password: &str, kdf: &str, params: &KdfParams) -> Result<[u8; 32]> {
-    let salt = b64d(&params.salt)?;
-    let mut key = [0u8; 32];
-
-    match kdf {
-        "pbkdf2" => {
-            let iters = params.iterations.unwrap_or(600_000);
-            pbkdf2_hmac::<Sha256>(password.as_bytes(), &salt, iters, &mut key);
-        }
-        "scrypt" => {
-            let n = params.n.unwrap_or(32_768);
-            let r = params.r.unwrap_or(8);
-            let p = params.p.unwrap_or(1);
-            let log_n = (31 - n.leading_zeros()) as u8;
-            let sp = ScryptParams::new(log_n, r, p, params.dklen as usize)?;
-            scrypt_crate::scrypt(password.as_bytes(), &salt, &sp, &mut key)?;
-        }
-        other => anyhow::bail!("unsupported kdf: {other}"),
-    }
-
-    let mut salt_mut = salt;
-    salt_mut.zeroize();
-    Ok(key)
-}
-
-/// 加密 32B 私钥 -> Crypto
+/// 将 32 字节私钥加密为 keystore::Crypto。
+/// - 参数：
+///   - priv32：明文私钥
+///   - password：用户口令
+///   - kdf：字符串 "scrypt" 或 "pbkdf2"
+///   - iterations/n/r/p：对应 KDF 参数
+/// - 返回：(Crypto, nonce)
+/// - 注意：内部会生成随机盐/IV，并使用 Zeroize 清理中间派生密钥
+/// - 加密 32B 私钥 -> Crypto
 pub fn encrypt(
     privkey: &[u8; 32],
     password: &str,
@@ -147,7 +130,9 @@ pub fn encrypt(
     Ok((crypto, nonce))
 }
 
-/// 解密 -> 32B 私钥
+/// 使用口令解密 keystore::Crypto，返回 32 字节私钥。
+/// - 口令错误或数据损坏时返回错误
+/// - 解密 -> 32B 私钥
 pub fn decrypt(crypto: &Crypto, password: &str) -> Result<[u8; 32]> {
     if crypto.cipher != CIPHER {
         anyhow::bail!("unsupported cipher: {}", crypto.cipher);
@@ -171,6 +156,42 @@ pub fn decrypt(crypto: &Crypto, password: &str) -> Result<[u8; 32]> {
     let mut key_mut = key;
     key_mut.zeroize();
     Ok(out)
+}
+
+/// 小写十六进制
+pub fn hex_lower(data: &[u8]) -> String {
+    let mut s = String::with_capacity(data.len() * 2);
+    for &b in data {
+        use core::fmt::Write;
+        let _ = write!(s, "{b:02x}");
+    }
+    s
+}
+
+/// KDF 派生 32B key
+fn derive_key(password: &str, kdf: &str, params: &KdfParams) -> Result<[u8; 32]> {
+    let salt = b64d(&params.salt)?;
+    let mut key = [0u8; 32];
+
+    match kdf {
+        "pbkdf2" => {
+            let iters = params.iterations.unwrap_or(600_000);
+            pbkdf2_hmac::<Sha256>(password.as_bytes(), &salt, iters, &mut key);
+        }
+        "scrypt" => {
+            let n = params.n.unwrap_or(32_768);
+            let r = params.r.unwrap_or(8);
+            let p = params.p.unwrap_or(1);
+            let log_n = (31 - n.leading_zeros()) as u8;
+            let sp = ScryptParams::new(log_n, r, p, params.dklen as usize)?;
+            scrypt_crate::scrypt(password.as_bytes(), &salt, &sp, &mut key)?;
+        }
+        other => anyhow::bail!("unsupported kdf: {other}"),
+    }
+
+    let mut salt_mut = salt;
+    salt_mut.zeroize();
+    Ok(key)
 }
 
 #[cfg(test)]
