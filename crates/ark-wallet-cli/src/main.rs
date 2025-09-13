@@ -15,9 +15,9 @@
 //! - JSON 导出（包含 file 与 privkey_hex）：`ark-wallet --json keystore export --file ks.json --password "pwd" --out-priv priv.hex`
 
 use bip39::Language;
-use clap::{ArgAction, Parser, Subcommand};
+use clap::{ ArgAction, Parser, Subcommand };
 use std::path::Path;
-use zeroize::{Zeroize, Zeroizing}; // <--- 新增
+use zeroize::{ Zeroize, Zeroizing }; // <--- 新增
 
 // 引入内部模块
 mod security;
@@ -229,7 +229,7 @@ fn now_rfc3339() -> String {
 // - 去除末尾的 \r\n（Windows）或 \n（类 Unix）
 // - 使用 Zeroizing 包装，超出作用域时自动清零内存，降低泄露风险
 fn read_password_from_stdin() -> anyhow::Result<Zeroizing<String>> {
-    use std::io::{self, Read};
+    use std::io::{ self, Read };
     let mut s = String::new();
     io::stdin().read_to_string(&mut s)?;
     // 去除换行（支持 \r\n 和 \n）
@@ -249,7 +249,7 @@ fn read_password_interactive(prompt: &str) -> anyhow::Result<Zeroizing<String>> 
         if std::env::var_os("ARK_WALLET_WARN_NO_TTY").is_some() {
             eprintln!("检测到非交互环境：将从 STDIN 读取密码（建议改用 --password-stdin）");
         }
-        use std::io::{self, BufRead};
+        use std::io::{ self, BufRead };
         let mut line = String::new();
         io::stdin().lock().read_line(&mut line)?;
         let pw = line.trim_end_matches(&['\r', '\n'][..]).to_string();
@@ -268,7 +268,7 @@ fn read_password_interactive(prompt: &str) -> anyhow::Result<Zeroizing<String>> 
 fn resolve_password(
     pw: Option<String>,
     from_stdin: bool,
-    prompt: bool,
+    prompt: bool
 ) -> anyhow::Result<Zeroizing<String>> {
     // 以位加法统计来源数量（true 视为 1），确保恰好一个来源被选择
     let sources = (pw.is_some() as u8) + (from_stdin as u8) + (prompt as u8);
@@ -299,7 +299,7 @@ fn resolve_password_create(
     pw: Option<String>,
     from_stdin: bool,
     prompt: bool,
-    confirm: bool,
+    confirm: bool
 ) -> anyhow::Result<Zeroizing<String>> {
     let pwd = resolve_password(pw, from_stdin, prompt)?;
     if confirm {
@@ -331,11 +331,7 @@ fn main() -> anyhow::Result<()> {
 
     let cli = Cli::parse();
     match cli.cmd {
-        Cmd::MnemonicNew {
-            lang,
-            words,
-            passphrase,
-        } => {
+        Cmd::MnemonicNew { lang, words, passphrase } => {
             use bip39::Mnemonic;
             let lang = parse_lang(&lang);
             // BIP39 词数 -> 熵长度映射（12/15/18/21/24 -> 128/160/192/224/256 bit）
@@ -370,16 +366,9 @@ fn main() -> anyhow::Result<()> {
             seed.zeroize();
         }
 
-        Cmd::MnemonicImport {
-            mnemonic,
-            mnemonic_file,
-            lang,
-            passphrase,
-            path,
-            full,
-        } => {
-            use bip32::{DerivationPath, XPrv};
-            use sha2::{Digest, Sha256};
+        Cmd::MnemonicImport { mnemonic, mnemonic_file, lang, passphrase, path, full } => {
+            use bip32::{ DerivationPath, XPrv };
+            use sha2::{ Digest, Sha256 };
 
             let lang = parse_lang(&lang);
             // 读取助记词来源：文件优先，否则使用命令行参数；均为空时报错
