@@ -1,3 +1,5 @@
+#![ignore] // 暂不启用；已迁移为单元测试
+
 //! 地址派生（学习注释）
 //! - 输入：secp256k1 压缩公钥（33 字节）
 //! - 哈希：项目内实现（常见做法为 SHA-256/Ripemd160 组合或自定义）
@@ -7,16 +9,13 @@
 
 use sha2::{ Digest, Sha256 };
 
-/// 从压缩公钥（33 字节）派生 Base58 地址的帮助函数。
-/// - 参数：pk33 为 secp256k1 压缩公钥字节（长度应为 33）
-/// - 返回：地址的 Base58 字符串表示
-/// - 错误处理：本函数通常假定输入已校验，内部不做昂贵校验
+/// 基础：从压缩公钥（33 字节）派生 Base58 地址。
 pub fn from_pubkey(pk_compressed: &[u8]) -> String {
     let h = Sha256::digest(pk_compressed);
     bs58::encode(&h[..20]).into_string()
 }
 
-/// 推荐：带版本与校验和的 Base58Check 地址
+/// 推荐：带版本与校验和的 Base58Check 地址（暂未在 CLI 输出中默认启用）
 #[allow(dead_code)]
 pub const ADDRESS_VERSION: u8 = 0x23;
 
@@ -32,11 +31,9 @@ mod tests {
 
     #[test]
     fn address_is_base58_and_len20_bytes() {
-        // 任意 33 字节输入（地址只依赖字节序列）
         let mut pk = [0u8; 33];
         pk[0] = 0x02;
         pk[32] = 0xaa;
-
         let addr = from_pubkey(&pk);
         let decoded = bs58::decode(&addr).into_vec().expect("valid base58");
         assert_eq!(decoded.len(), 20);
@@ -46,7 +43,6 @@ mod tests {
     fn address_is_deterministic_and_changes_with_input() {
         let mut pk1 = [0u8; 33];
         pk1[0] = 0x02;
-
         let mut pk2 = pk1;
         pk2[32] = 1;
 
@@ -56,6 +52,26 @@ mod tests {
 
         assert_eq!(a1, a1b);
         assert_ne!(a1, a2);
+    }
+
+    // 可选：Base58Check 单元测试（移入这里，删除 integration test）
+    #[test]
+    fn b58check_roundtrip_and_checksum() {
+        let mut pk = [0u8; 33];
+        pk[0] = 0x02;
+        pk[32] = 0xab;
+        let addr_b58c = from_pubkey_b58check(&pk);
+        let (ver, payload) = crate::security::b58check_decode(&addr_b58c).expect("valid");
+        assert_eq!(ver, ADDRESS_VERSION);
+        assert_eq!(payload.len(), 20);
+        let h = sha2::Sha256::digest(&pk);
+        assert_eq!(&payload[..], &h[..20]);
+
+        // 破坏校验和
+        let mut bytes = addr_b58c.into_bytes();
+        *bytes.last_mut().unwrap() ^= 0x01;
+        let tampered = String::from_utf8(bytes).unwrap();
+        assert!(crate::security::b58check_decode(&tampered).is_none());
     }
 }
 
