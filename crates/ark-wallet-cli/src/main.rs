@@ -430,17 +430,16 @@ fn main() -> anyhow::Result<()> {
                     mnemonic,
                     mnemonic_file,
                     lang,
-                    passphrase,
                     path,
-                    password,
-                    password_stdin,
-                    password_prompt,
-                    password_confirm,
-                    mut kdf,
+                    kdf,
                     iterations,
                     n,
                     r,
                     p,
+                    password,
+                    password_stdin,
+                    password_prompt,
+                    password_confirm,
                     out,
                     overwrite,
                 } => {
@@ -467,9 +466,23 @@ fn main() -> anyhow::Result<()> {
                     // 助记词文本不再需要，尽早清理
                     mn_text.zeroize();
 
-                    // KDF 标准化与校验；随后解析/读取口令（可二次确认）
-                    kdf = kdf.to_lowercase();
-                    validate_kdf(&kdf)?;
+                    // === 新增：统一 KDF 选择 + 参数下限校验 ===
+                    let kdf_kind = crate::security::validate_kdf_choice(&kdf)
+                        .map_err(|e| anyhow::anyhow!(e))?;
+
+                    // 传入默认值（没有提供则 0，会被校验失败；你的逻辑若已有默认值常量请替换）
+                    crate::security::validate_kdf_params(
+                        kdf_kind,
+                        iterations.unwrap_or(0),
+                        n.unwrap_or(0),
+                        r.unwrap_or(0),
+                        p.unwrap_or(0),
+                    )
+                    .map_err(|e| anyhow::anyhow!(e))?;
+
+                    // 如果之前已有手动对 kdf 名称的匹配校验（例如 if kdf != "scrypt"/"pbkdf2"），可删掉避免重复
+
+                    // 解析/读取口令（可二次确认）
                     let password = resolve_password_create(
                         password,
                         password_stdin,
