@@ -16,7 +16,8 @@
 
 use bip39::Language;
 use clap::{ArgAction, Parser, Subcommand};
-use zeroize::{Zeroize, Zeroizing};
+use std::path::Path;
+use zeroize::{Zeroize, Zeroizing}; // <--- 新增
 
 // 引入内部模块
 mod security;
@@ -429,6 +430,7 @@ fn main() -> anyhow::Result<()> {
                 KsCmd::Create {
                     mnemonic,
                     mnemonic_file,
+                    passphrase,
                     lang,
                     path,
                     kdf,
@@ -442,10 +444,20 @@ fn main() -> anyhow::Result<()> {
                     password_confirm,
                     out,
                     overwrite,
+                    .. // 保底：忽略未来新增字段
                 } => {
-                    use std::path::Path;
-                    let lang = parse_lang(&lang);
-                    // 优先从文件读取助记词；否则从命令行；缺失时报错
+                    // 解析语言代码 -> bip39::Language
+                    let bip_lang = parse_lang(&lang);
+
+                    let kdf_kind = crate::security
+                        ::validate_kdf_choice(&kdf)
+                        .map_err(anyhow::Error::msg)?;
+                    crate::security
+                        ::validate_kdf_params(kdf_kind, iterations, n, r, p)
+                        .map_err(anyhow::Error::msg)?;
+
+                    let passphrase = Zeroizing::new(passphrase.unwrap_or_default());
+
                     let mut mn_text = if let Some(file) = mnemonic_file {
                         fs::read_to_string(file)?.trim().to_string()
                     } else if let Some(mn) = mnemonic {
@@ -454,40 +466,22 @@ fn main() -> anyhow::Result<()> {
                         anyhow::bail!("either --mnemonic or --mnemonic-file is required")
                     };
 
-                    // 先校验助记词、路径与派生是否可行，失败则立刻报错（不触发密码输入）
-                    let pass = Zeroizing::new(passphrase.unwrap_or_default());
                     let (priv32, pk33, _) = wallet::hd::derive_priv_from_mnemonic(
-                        lang,
+                        bip_lang, // <--- 改为解析后的 Language
                         &mn_text,
-                        pass.as_str(),
-                        &path,
+                        passphrase.as_str(),
+                        &path
                     )?;
                     let address = wallet::address::from_pubkey(&pk33);
                     // 助记词文本不再需要，尽早清理
                     mn_text.zeroize();
-
-                    // === 新增：统一 KDF 选择 + 参数下限校验 ===
-                    let kdf_kind = crate::security::validate_kdf_choice(&kdf)
-                        .map_err(|e| anyhow::anyhow!(e))?;
-
-                    // 传入默认值（没有提供则 0，会被校验失败；你的逻辑若已有默认值常量请替换）
-                    crate::security::validate_kdf_params(
-                        kdf_kind,
-                        iterations.unwrap_or(0),
-                        n.unwrap_or(0),
-                        r.unwrap_or(0),
-                        p.unwrap_or(0),
-                    )
-                    .map_err(|e| anyhow::anyhow!(e))?;
-
-                    // 如果之前已有手动对 kdf 名称的匹配校验（例如 if kdf != "scrypt"/"pbkdf2"），可删掉避免重复
 
                     // 解析/读取口令（可二次确认）
                     let password = resolve_password_create(
                         password,
                         password_stdin,
                         password_prompt,
-                        password_confirm,
+                        password_confirm
                     )?;
                     // 最低长度约束（示例值：8），可根据安全要求调整
                     if password.len() < 8 {
@@ -502,7 +496,7 @@ fn main() -> anyhow::Result<()> {
                         iterations,
                         n,
                         r,
-                        p,
+                        p
                     )?;
                     let path_str = path.clone(); // JSON 输出中保留原始派生路径
                     let ks = wallet::keystore::Keystore {
@@ -514,14 +508,15 @@ fn main() -> anyhow::Result<()> {
                         crypto,
                     };
                     let json = serde_json::to_string_pretty(&ks)?;
-                    let p = Path::new(&out);
+                    let p = Path::new(&out); // 现在 Path 已导入
                     if p.exists() && !overwrite {
                         anyhow::bail!("file exists: {out}. Use --overwrite to replace");
                     }
                     // 使用安全原子写入，返回规范化绝对路径
                     let out_abs = crate::security::secure_atomic_write(p, json.as_bytes())?;
                     if cli.json {
-                        let out_json = serde_json::json!({
+                        let out_json =
+                            serde_json::json!({
                             "address": ks.address,
                             "path": path_str,
                             "file": out_abs.to_string_lossy()
@@ -538,13 +533,7 @@ fn main() -> anyhow::Result<()> {
                     }
                 }
 
-                KsCmd::Import {
-                    file,
-                    password,
-                    password_stdin,
-                    password_prompt,
-                    full,
-                } => {
+                KsCmd::Import { file, password, password_stdin, password_prompt, full } => {
                     // 读取并反序列化 keystore；版本不兼容直接拒绝
                     let raw = fs::read_to_string(&file)?;
                     let ks: wallet::keystore::Keystore = serde_json::from_str(&raw)?;
@@ -560,7 +549,8 @@ fn main() -> anyhow::Result<()> {
 
                     if full || cli.json {
                         // 打印更多校验信息，包含 keystore 中记录的公钥 hex 与当前计算的是否一致
-                        let out = serde_json::json!({
+                        let out =
+                            serde_json::json!({
                             "address": address,
                             "path": ks.path,
                             "pubkey_hex": wallet::keystore::hex_lower(&pk33),
@@ -580,13 +570,7 @@ fn main() -> anyhow::Result<()> {
                     }
                 }
 
-                KsCmd::Export {
-                    file,
-                    password,
-                    password_stdin,
-                    password_prompt,
-                    out_priv,
-                } => {
+                KsCmd::Export { file, password, password_stdin, password_prompt, out_priv } => {
                     // 加载 keystore 并校验版本
                     let raw = fs::read_to_string(&file)?;
                     let ks: wallet::keystore::Keystore = serde_json::from_str(&raw)?;
@@ -603,7 +587,8 @@ fn main() -> anyhow::Result<()> {
                         if let Some(outp) = out_priv {
                             // 写入文件，同时在 JSON 中返回规范化（绝对）路径与私钥 hex
                             let abs = crate::security::secure_atomic_write(&outp, hex.as_bytes())?;
-                            let out = serde_json::json!({ "privkey_hex": hex, "file": abs.to_string_lossy() });
+                            let out =
+                                serde_json::json!({ "privkey_hex": hex, "file": abs.to_string_lossy() });
                             println!("{}", serde_json::to_string_pretty(&out)?);
                         } else {
                             // 仅返回私钥 hex（不写文件）
