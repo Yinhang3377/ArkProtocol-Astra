@@ -1,5 +1,9 @@
 name: Build and upload release artifacts
 
+permissions:
+  contents: write
+  packages: write
+
 on:
   release:
     types: [published]
