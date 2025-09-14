@@ -88,10 +88,11 @@ fn export_json_writes_file_path() {
 
     let body = String::from_utf8(assert.get_output().stdout.clone()).unwrap();
     let v: Value = serde_json::from_str(&body).unwrap();
-    assert_eq!(
-        v.get("file").and_then(|x| x.as_str()).unwrap(),
-        out.to_str().unwrap()
-    );
+    // Canonicalize both paths to avoid macOS /private vs /var mismatch
+    let file_out = v.get("file").and_then(|x| x.as_str()).unwrap();
+    let file_out_canon = fs::canonicalize(std::path::Path::new(file_out)).unwrap();
+    let out_canon = fs::canonicalize(&out).unwrap();
+    assert_eq!(file_out_canon, out_canon);
     assert!(out.exists());
 
     // 文件内容和 JSON 中的 hex 一致
