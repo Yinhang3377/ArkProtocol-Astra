@@ -28,7 +28,7 @@ k256 = { workspace = true }
 zeroize = { workspace = true }
 chrono = { workspace = true }
 dialoguer = "0.12"
-console = "0.15"
+console = "0.16"
 thiserror = "1"
 dunce = "1"
 rand = "0.8"
