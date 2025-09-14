@@ -1,44 +1,31 @@
-# Wallet Snapshot Release: v0.1.0-wallet
+# Release v0.4.2 — Wallet CLI security and release snapshot
 
-This release publishes the wallet snapshot including CLI, keystore, and security hardening.
+This release finalizes the security roadmap for the wallet CLI and prepares a tagged snapshot for distribution.
 
 ## Highlights
 
-- CLI: `ark-wallet` with subcommands for `mnemonic` and `keystore` (create/import/export).
-- Keystore: AES-256-GCM encryption, supports PBKDF2 and scrypt KDFs.
-- Security:
-  - Unified `SecurityError` boundary and deterministic exit codes.
-  - Password handling uses `zeroize::Zeroizing<String>` and explicitly zeroizes sensitive memory.
-  - Addresses use Base58Check by default for storage and output.
-  - `secure_atomic_write` for durable atomic file writes (fsync+rename+dir-fsync).
-- Engineering:
-  - Replaced direct `getrandom` calls with `rand::rngs::OsRng` for compatibility.
-  - Comprehensive unit and integration tests for wallet functionality.
-  - CI format/lint fixes applied and workflow validated across platforms.
+- Unified security error handling (`SecurityError`) across wallet CLI modules.
+- Zeroized password handling for memory safety (passwords stored in `Zeroizing<String>` and zeroed after use).
+- Enforced Base58Check addresses for stored/printed addresses to avoid legacy weak formats.
+- Implemented `secure_atomic_write` for safe, atomic file writes (temp file in same dir, fsync, rename, permissions tightened on Unix).
+- Replaced direct `getrandom` usage with OS RNG (`rand::rngs::OsRng`) and added secure random suffix for temp files.
+- Validated KDF choices and parameters early to avoid weak configurations.
 
-## Basic usage examples
+## Testing & CI
 
-- Generate a 12-word mnemonic (English):
+- Local: `cargo fmt`, `cargo clippy`, `cargo test` (ark-wallet-cli) — all passing.
+- CI: GitHub Actions matrix (msrv, macOS, Ubuntu, Windows) passes for the pushed commit.
 
-  ```bash
-  ark-wallet mnemonic new --lang en --words 12
-  ```
+## Notes for reviewers
 
-- Create a keystore from mnemonic (prompt for password):
+- Focus review on `crates/ark-wallet-cli/src/security` and `crates/ark-wallet-cli/src/wallet` changes (errors, fs, kdf, keystore, address, main).
+- The tag `v0.4.2` will be created for this snapshot.
 
-  ```bash
-  ark-wallet keystore create --mnemonic "..." --password-prompt --password-confirm
-  ```
+## Changelog (summary)
 
-- Export private key hex to file (JSON output):
-
-  ```bash
-  ark-wallet keystore export --file keystore.json --password-stdin --out-priv priv.hex --json
-  ```
-
-## Notes for maintainers
-
-- Tests: `cargo test -p ark-wallet-cli`.
-- Format: `cargo fmt --all` (CI enforces formatting).
-- Tagging: this file is created and the release tag `v0.1.0-wallet` will be pushed to remote.
+- Security: unify SecurityError and map top-level errors to deterministic exit codes.
+- Security: zeroize password handling across CLI flows.
+- Security: Base58Check output and import-time compatibility helpers.
+- Security: atomic file writing and tightened file permissions on Unix.
+- Misc: add `rand = "0.8"` and `hex = "0.4"` dependencies for secure temp suffix.
 
