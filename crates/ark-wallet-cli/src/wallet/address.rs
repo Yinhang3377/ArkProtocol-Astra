@@ -5,7 +5,7 @@
 //!
 //! 本文件仅包含纯函数与单元测试，不包含 CLI JSON 代码。
 
-use sha2::{Digest, Sha256};
+use sha2::{ Digest, Sha256 };
 
 /// 简单 Base58 地址（无版本/校验和）
 ///
@@ -69,7 +69,7 @@ mod tests {
         let (ver, payload) = crate::security::b58check_decode(&addr_b58c).expect("valid b58check");
         assert_eq!(ver, ADDRESS_VERSION);
         assert_eq!(payload.len(), 20);
-        let h = sha2::Sha256::digest(&pk);
+        let h = sha2::Sha256::digest(pk);
         assert_eq!(&payload[..], &h[..20]);
 
         // 篡改 -> checksum 失败
