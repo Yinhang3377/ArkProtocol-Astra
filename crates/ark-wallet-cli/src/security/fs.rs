@@ -11,15 +11,15 @@ use dunce;
 use rand::rngs::OsRng;
 use rand::RngCore;
 use std::fs;
-use std::fs::{ File, OpenOptions };
+use std::fs::{File, OpenOptions};
 use std::io::Write;
-use std::path::{ Path, PathBuf };
+use std::path::{Path, PathBuf};
 
 /// Atomically write `bytes` to `path` and return a canonicalized PathBuf.
 /// Maps IO errors to `SecurityError::Io`.
 pub fn secure_atomic_write<P: AsRef<Path>>(
     path: P,
-    bytes: &[u8]
+    bytes: &[u8],
 ) -> Result<PathBuf, SecurityError> {
     let path = path.as_ref();
     let dir = path.parent().unwrap_or_else(|| Path::new("."));
@@ -29,10 +29,7 @@ pub fn secure_atomic_write<P: AsRef<Path>>(
 
     // Build a reasonably unique temporary filename inside the target directory.
     // Using create_new below prevents races with existing files with same name.
-    let base = path
-        .file_name()
-        .and_then(|s| s.to_str())
-        .unwrap_or("out");
+    let base = path.file_name().and_then(|s| s.to_str()).unwrap_or("out");
 
     let mut tmp = PathBuf::from(dir);
     // random suffix to avoid collisions
@@ -92,8 +89,7 @@ pub fn secure_atomic_write<P: AsRef<Path>>(
 
     // Canonicalize for consistent absolute path; on Windows `dunce::canonicalize`
     // avoids the "\\?\\" prefix.
-    dunce
-        ::canonicalize(path)
+    dunce::canonicalize(path)
         .or_else(|_| {
             if path.is_absolute() {
                 Ok(path.to_path_buf())
