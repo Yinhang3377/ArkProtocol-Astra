@@ -4,12 +4,19 @@ This release finalizes the security roadmap for the wallet CLI and prepares a ta
 
 ## Highlights
 
-- Unified security error handling (`SecurityError`) across wallet CLI modules.
-- Zeroized password handling for memory safety (passwords stored in `Zeroizing<String>` and zeroed after use).
-- Enforced Base58Check addresses for stored/printed addresses to avoid legacy weak formats.
-- Implemented `secure_atomic_write` for safe, atomic file writes (temp file in same dir, fsync, rename, permissions tightened on Unix).
-- Replaced direct `getrandom` usage with OS RNG (`rand::rngs::OsRng`) and added secure random suffix for temp files.
-- Validated KDF choices and parameters early to avoid weak configurations.
+- CLI: `ark-wallet` with subcommands for `mnemonic` and `keystore` (create/import/export).
+- Keystore: AES-256-GCM encryption, supports PBKDF2 and scrypt KDFs.
+- Security:
+  - Unified `SecurityError` boundary and deterministic exit codes.
+  - Zeroized password handling for memory safety (passwords stored in `Zeroizing<String>` and zeroed after use).
+  - Addresses use Base58Check by default for storage and output (legacy import flags available).
+  - `secure_atomic_write` for durable atomic file writes (temp file in same dir, fsync+rename+dir-fsync, tightened permissions on Unix).
+  - Validated KDF choices and parameters early to avoid weak configurations.
+- Engineering:
+  - Replaced direct `getrandom` calls with `rand::rngs::OsRng` for compatibility.
+  - Comprehensive unit and integration tests for wallet functionality.
+  - CI format/lint fixes applied and workflow validated across platforms.
+  - Dependency updates: bumped `console` from 0.15.11 to 0.16.0 (Dependabot PR #2), CI verified and merged into `main`.
 
 ## Testing & CI
 
