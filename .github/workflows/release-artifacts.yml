@@ -74,7 +74,13 @@ jobs:
         if: matrix.os != 'windows-latest'
         run: |
           export SCCACHE_DIR=${{ github.workspace }}/.sccache
-          export RUSTC_WRAPPER=$HOME/.cargo/bin/sccache
+          # Enable RUSTC_WRAPPER only if sccache is present (runner may not have it)
+          if [ -x "$HOME/.cargo/bin/sccache" ]; then
+            echo "sccache found; enabling RUSTC_WRAPPER"
+            export RUSTC_WRAPPER=$HOME/.cargo/bin/sccache
+          else
+            echo "sccache not found; building without sccache"
+          fi
           cargo build --manifest-path ./crates/ark-wallet-cli/Cargo.toml --release --target ${{ matrix.target }}
 
       - name: Build release (Windows)
@@ -83,7 +89,14 @@ jobs:
         run: |
           New-Item -ItemType Directory -Path "$env:GITHUB_WORKSPACE\.sccache" -Force | Out-Null
           $env:SCCACHE_DIR = "$env:GITHUB_WORKSPACE\.sccache"
-          $env:RUSTC_WRAPPER = "$env:USERPROFILE\.cargo\bin\sccache.exe"
+          # Enable RUSTC_WRAPPER only if sccache exists on the runner
+          $sccachePath = Join-Path $env:USERPROFILE '.cargo\bin\sccache.exe'
+          if (Test-Path $sccachePath) {
+            Write-Host "sccache found at $sccachePath; enabling RUSTC_WRAPPER"
+            $env:RUSTC_WRAPPER = $sccachePath
+          } else {
+            Write-Host 'sccache not found; building without sccache'
+          }
           cargo build --manifest-path ./crates/ark-wallet-cli/Cargo.toml --release --target ${{ matrix.target }}
 
       - name: Create dist directory (Unix)
