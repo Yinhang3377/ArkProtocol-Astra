@@ -3,9 +3,6 @@ name = "ark-wallet-cli"
 version = "0.1.1"
 edition = "2021"
 rust-version = "1.85"
-description = "Ark wallet CLI: mnemonic, HD derivation, keystore import/export"
-repository = "https://github.com/Yinhang3377/ArkProtocol-Astra"
-readme = "README.md"
 license-file = "LICENSE"
 publish = false
 
@@ -32,6 +29,8 @@ zeroize = { workspace = true }
 chrono = { workspace = true }
 dialoguer = "0.12"
 console = "0.15"
+thiserror = "1"
+dunce = "1"
 
 [[bin]]
 name = "ark-wallet"

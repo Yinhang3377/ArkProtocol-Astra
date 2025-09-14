@@ -46,7 +46,11 @@ fn create_json_prints_address_path_file() {
 
     assert!(!addr.is_empty());
     assert_eq!(path_out, path);
-    assert_eq!(file_out, ks.to_str().unwrap());
+    // Canonicalize both paths to handle platform differences (macOS uses /private/var/...)
+    let file_out_path = std::path::Path::new(file_out);
+    let file_out_canon = fs::canonicalize(file_out_path).unwrap();
+    let ks_canon = fs::canonicalize(&ks).unwrap();
+    assert_eq!(file_out_canon, ks_canon);
 
     // 读取 keystore 文件，校验地址一致
     let body = fs::read_to_string(&ks).unwrap();

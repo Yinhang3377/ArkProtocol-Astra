@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "created_at": "2025-09-14T00:16:39.388754+00:00",
+  "address": "3riVgsDiNxKinA5gSYjJBzHb1km3",
+  "path": "m/44'/7777'/0'/0/0",
+  "pubkey_hex": "039fb80bfe673443418a64a0cb267a88fe7c2e57e457235af83e3c52af955b67d1",
+  "crypto": {
+    "cipher": "AES-256-GCM",
+    "kdf": "pbkdf2",
+    "kdfparams": {
+      "salt": "enyjCBoG2qU5WTYv84K3iQ==",
+      "dklen": 32,
+      "iterations": 600000
+    },
+    "nonce": "++JaWkGKQT5IwiiW",
+    "ciphertext": "eoguntBHoR3XGSjoyB5YyVxU9iu0WqVJPmvN1/jm4xodMijT6XVDT/W9y5GpKj+3"
+  }
+}
