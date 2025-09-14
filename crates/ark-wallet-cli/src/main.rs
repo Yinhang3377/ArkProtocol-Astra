@@ -238,10 +238,10 @@ fn now_rfc3339() -> String {
 // 从 STDIN 读取完整输入作为密码（用于 --password-stdin）。
 // - 去除末尾的 \r\n（Windows）或 \n（类 Unix）
 // - 使用 Zeroizing 包装，超出作用域时自动清零内存，降低泄露风险
-fn read_password_from_stdin() -> anyhow::Result<Zeroizing<String>> {
+fn read_password_from_stdin() -> Result<Zeroizing<String>, crate::security::errors::SecurityError> {
     use std::io::{ self, Read };
     let mut s = String::new();
-    io::stdin().read_to_string(&mut s)?;
+    io::stdin().read_to_string(&mut s).map_err(crate::security::errors::SecurityError::Io)?;
     // 去除换行（支持 \r\n 和 \n）
     let s = s.trim_end_matches(&['\r', '\n'][..]).to_string();
     Ok(Zeroizing::new(s))
@@ -250,7 +250,9 @@ fn read_password_from_stdin() -> anyhow::Result<Zeroizing<String>> {
 // 交互式读取密码（用于 --password-prompt）。
 // - 当检测到非交互环境（非 TTY），不会阻塞等待隐藏输入，而是回退为读取一行 STDIN
 // - 可通过设置 ARK_WALLET_WARN_NO_TTY=1 打印回退提示，默认静默
-fn read_password_interactive(prompt: &str) -> anyhow::Result<Zeroizing<String>> {
+fn read_password_interactive(
+    prompt: &str
+) -> Result<Zeroizing<String>, crate::security::errors::SecurityError> {
     use dialoguer::Password;
 
     // 非 TTY（例如管道、CI）时，回退为从 STDIN 读取
@@ -261,14 +263,25 @@ fn read_password_interactive(prompt: &str) -> anyhow::Result<Zeroizing<String>> 
         }
         use std::io::{ self, BufRead };
         let mut line = String::new();
-        io::stdin().lock().read_line(&mut line)?;
+        io
+            ::stdin()
+            .lock()
+            .read_line(&mut line)
+            .map_err(crate::security::errors::SecurityError::Io)?;
         let pw = line.trim_end_matches(&['\r', '\n'][..]).to_string();
         return Ok(Zeroizing::new(pw));
     }
 
     // 去掉提示结尾的冒号或空格，避免重复显示 "Password: :"
     let prompt_clean = prompt.trim_end_matches(&[':', ' '][..]).to_string();
-    let input = Password::new().with_prompt(&prompt_clean).interact()?;
+    let input = Password::new()
+        .with_prompt(&prompt_clean)
+        .interact()
+        .map_err(|e|
+            crate::security::errors::SecurityError::Io(
+                std::io::Error::new(std::io::ErrorKind::Other, format!("dialoguer failed: {}", e))
+            )
+        )?;
     Ok(Zeroizing::new(input))
 }
 
@@ -279,17 +292,21 @@ fn resolve_password(
     pw: Option<String>,
     from_stdin: bool,
     prompt: bool
-) -> anyhow::Result<Zeroizing<String>> {
+) -> Result<Zeroizing<String>, crate::security::errors::SecurityError> {
     // 以位加法统计来源数量（true 视为 1），确保恰好一个来源被选择
     let sources = (pw.is_some() as u8) + (from_stdin as u8) + (prompt as u8);
     if sources == 0 {
-        anyhow::bail!(
-            "password is required: provide --password or --password-stdin or --password-prompt"
+        return Err(
+            crate::security::errors::SecurityError::InvalidParams(
+                "password is required: provide --password or --password-stdin or --password-prompt".to_string()
+            )
         );
     }
     if sources > 1 {
-        anyhow::bail!(
-            "conflicting password sources: use only one of --password/--password-stdin/--password-prompt"
+        return Err(
+            crate::security::errors::SecurityError::InvalidParams(
+                "conflicting password sources: use only one of --password/--password-stdin/--password-prompt".to_string()
+            )
         );
     }
     if let Some(p) = pw {
@@ -310,15 +327,23 @@ fn resolve_password_create(
     from_stdin: bool,
     prompt: bool,
     confirm: bool
-) -> anyhow::Result<Zeroizing<String>> {
-    let pwd = resolve_password(pw, from_stdin, prompt)?;
+) -> Result<Zeroizing<String>, crate::security::errors::SecurityError> {
+    let pwd = resolve_password(pw, from_stdin, prompt).map_err(|e| e)?;
     if confirm {
         if !prompt {
-            anyhow::bail!("--password-confirm requires --password-prompt");
+            return Err(
+                crate::security::errors::SecurityError::InvalidParams(
+                    "--password-confirm requires --password-prompt".to_string()
+                )
+            );
         }
         let pwd2 = read_password_interactive("Confirm password: ")?;
         if pwd.as_str() != pwd2.as_str() {
-            anyhow::bail!("passwords do not match");
+            return Err(
+                crate::security::errors::SecurityError::InvalidParams(
+                    "passwords do not match".to_string()
+                )
+            );
         }
     }
     Ok(pwd)
@@ -374,7 +399,10 @@ fn main() -> anyhow::Result<()> {
             let lang = parse_lang(&lang);
             // 读取助记词来源：文件优先，否则使用命令行参数；均为空时报错
             let mut mn_text = if let Some(file) = mnemonic_file {
-                fs::read_to_string(file)?.trim().to_string()
+                fs::read_to_string(file)
+                    .map_err(|e| crate::security::errors::SecurityError::Io(e))?
+                    .trim()
+                    .to_string()
             } else if let Some(mn) = mnemonic {
                 mn
             } else {
@@ -450,7 +478,10 @@ fn main() -> anyhow::Result<()> {
                     let passphrase = Zeroizing::new(passphrase.unwrap_or_default());
 
                     let mut mn_text = if let Some(file) = mnemonic_file {
-                        fs::read_to_string(file)?.trim().to_string()
+                        fs::read_to_string(file)
+                            .map_err(|e| anyhow::anyhow!("io error: {}", e))?
+                            .trim()
+                            .to_string()
                     } else if let Some(mn) = mnemonic {
                         mn
                     } else {
@@ -479,7 +510,7 @@ fn main() -> anyhow::Result<()> {
                         password_stdin,
                         password_prompt,
                         password_confirm
-                    )?;
+                    ).map_err(|e| anyhow::anyhow!("password error: {}", e))?;
                     // 最低长度约束（示例值：8），可根据安全要求调整
                     if password.len() < 8 {
                         anyhow::bail!("password too short (min 8 chars)");
@@ -535,14 +566,20 @@ fn main() -> anyhow::Result<()> {
                     b58check,
                 } => {
                     // 读取并反序列化 keystore；版本不兼容直接拒绝
-                    let raw = fs::read_to_string(&file)?;
+                    let raw = fs
+                        ::read_to_string(&file)
+                        .map_err(|e| anyhow::anyhow!("io error: {}", e))?;
                     let ks: wallet::keystore::Keystore = serde_json::from_str(&raw)?;
                     if ks.version != wallet::keystore::VERSION {
                         anyhow::bail!("unsupported keystore version: {}", ks.version);
                     }
 
                     // 解密得到私钥 -> 还原公钥与地址
-                    let password = resolve_password(password, password_stdin, password_prompt)?;
+                    let password = resolve_password(
+                        password,
+                        password_stdin,
+                        password_prompt
+                    ).map_err(|e| anyhow::anyhow!("password error: {}", e))?;
                     let priv32 = wallet::keystore
                         ::decrypt(&ks.crypto, password.as_str())
                         .map_err(|e| anyhow::anyhow!("keystore decrypt error: {}", e))?;
@@ -597,14 +634,20 @@ fn main() -> anyhow::Result<()> {
                     b58check: _,
                 } => {
                     // 加载 keystore 并校验版本
-                    let raw = fs::read_to_string(&file)?;
+                    let raw = fs
+                        ::read_to_string(&file)
+                        .map_err(|e| anyhow::anyhow!("io error: {}", e))?;
                     let ks: wallet::keystore::Keystore = serde_json::from_str(&raw)?;
                     if ks.version != wallet::keystore::VERSION {
                         anyhow::bail!("unsupported keystore version: {}", ks.version);
                     }
 
                     // 解密得到私钥并格式化为小写十六进制
-                    let password = resolve_password(password, password_stdin, password_prompt)?;
+                    let password = resolve_password(
+                        password,
+                        password_stdin,
+                        password_prompt
+                    ).map_err(|e| anyhow::anyhow!("password error: {}", e))?;
                     let priv32 = wallet::keystore
                         ::decrypt(&ks.crypto, password.as_str())
                         .map_err(|e| anyhow::anyhow!("keystore decrypt error: {}", e))?;
