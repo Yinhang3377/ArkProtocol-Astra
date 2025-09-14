@@ -226,7 +226,7 @@ dependencies = [
  "console 0.15.11",
  "dialoguer",
  "dunce",
- "getrandom 0.2.16",
+ "getrandom 0.3.3",
  "k256",
  "pbkdf2",
  "predicates",
