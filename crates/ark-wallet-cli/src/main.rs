@@ -15,10 +15,10 @@
 //! - JSON 导出（包含 file 与 privkey_hex）：`ark-wallet --json keystore export --file ks.json --password "pwd" --out-priv priv.hex`
 
 use bip39::Language;
-use clap::{ ArgAction, Parser, Subcommand };
+use clap::{ArgAction, Parser, Subcommand};
 use sha2::Digest;
 use std::path::Path;
-use zeroize::{ Zeroize, Zeroizing }; // <--- 新增
+use zeroize::{Zeroize, Zeroizing}; // <--- 新增
 
 // 引入内部模块
 mod security;
@@ -282,9 +282,11 @@ fn now_rfc3339() -> String {
 // - 去除末尾的 \r\n（Windows）或 \n（类 Unix）
 // - 使用 Zeroizing 包装，超出作用域时自动清零内存，降低泄露风险
 fn read_password_from_stdin() -> Result<Zeroizing<String>, crate::security::errors::SecurityError> {
-    use std::io::{ self, Read };
+    use std::io::{self, Read};
     let mut s = String::new();
-    io::stdin().read_to_string(&mut s).map_err(crate::security::errors::SecurityError::Io)?;
+    io::stdin()
+        .read_to_string(&mut s)
+        .map_err(crate::security::errors::SecurityError::Io)?;
     // 去除换行（支持 \r\n 和 \n）
     let s = s.trim_end_matches(&['\r', '\n'][..]).to_string();
     Ok(Zeroizing::new(s))
@@ -294,7 +296,7 @@ fn read_password_from_stdin() -> Result<Zeroizing<String>, crate::security::erro
 // - 当检测到非交互环境（非 TTY），不会阻塞等待隐藏输入，而是回退为读取一行 STDIN
 // - 可通过设置 ARK_WALLET_WARN_NO_TTY=1 打印回退提示，默认静默
 fn read_password_interactive(
-    prompt: &str
+    prompt: &str,
 ) -> Result<Zeroizing<String>, crate::security::errors::SecurityError> {
     use dialoguer::Password;
 
@@ -304,10 +306,9 @@ fn read_password_interactive(
         if std::env::var_os("ARK_WALLET_WARN_NO_TTY").is_some() {
             eprintln!("检测到非交互环境：将从 STDIN 读取密码（建议改用 --password-stdin）");
         }
-        use std::io::{ self, BufRead };
+        use std::io::{self, BufRead};
         let mut line = String::new();
-        io
-            ::stdin()
+        io::stdin()
             .lock()
             .read_line(&mut line)
             .map_err(crate::security::errors::SecurityError::Io)?;
@@ -321,9 +322,10 @@ fn read_password_interactive(
         .with_prompt(&prompt_clean)
         .interact()
         .map_err(|e| {
-            crate::security::errors::SecurityError::Io(
-                std::io::Error::other(format!("dialoguer failed: {}", e))
-            )
+            crate::security::errors::SecurityError::Io(std::io::Error::other(format!(
+                "dialoguer failed: {}",
+                e
+            )))
         })?;
     Ok(Zeroizing::new(input))
 }
@@ -334,16 +336,15 @@ fn read_password_interactive(
 fn resolve_password(
     pw: Option<String>,
     from_stdin: bool,
-    prompt: bool
+    prompt: bool,
 ) -> Result<Zeroizing<String>, crate::security::errors::SecurityError> {
     // 以位加法统计来源数量（true 视为 1），确保恰好一个来源被选择
     let sources = (pw.is_some() as u8) + (from_stdin as u8) + (prompt as u8);
     if sources == 0 {
-        return Err(
-            crate::security::errors::SecurityError::InvalidParams(
-                "password is required: provide --password or --password-stdin or --password-prompt".to_string()
-            )
-        );
+        return Err(crate::security::errors::SecurityError::InvalidParams(
+            "password is required: provide --password or --password-stdin or --password-prompt"
+                .to_string(),
+        ));
     }
     if sources > 1 {
         return Err(
@@ -369,24 +370,20 @@ fn resolve_password_create(
     pw: Option<String>,
     from_stdin: bool,
     prompt: bool,
-    confirm: bool
+    confirm: bool,
 ) -> Result<Zeroizing<String>, crate::security::errors::SecurityError> {
     let pwd = resolve_password(pw, from_stdin, prompt)?;
     if confirm {
         if !prompt {
-            return Err(
-                crate::security::errors::SecurityError::InvalidParams(
-                    "--password-confirm requires --password-prompt".to_string()
-                )
-            );
+            return Err(crate::security::errors::SecurityError::InvalidParams(
+                "--password-confirm requires --password-prompt".to_string(),
+            ));
         }
         let pwd2 = read_password_interactive("Confirm password: ")?;
         if pwd.as_str() != pwd2.as_str() {
-            return Err(
-                crate::security::errors::SecurityError::InvalidParams(
-                    "passwords do not match".to_string()
-                )
-            );
+            return Err(crate::security::errors::SecurityError::InvalidParams(
+                "passwords do not match".to_string(),
+            ));
         }
     }
     Ok(pwd)
@@ -400,7 +397,11 @@ fn run() -> anyhow::Result<()> {
 
     let cli = Cli::parse();
     match cli.cmd {
-        Cmd::MnemonicNew { lang, words, passphrase } => {
+        Cmd::MnemonicNew {
+            lang,
+            words,
+            passphrase,
+        } => {
             use bip39::Mnemonic;
             let lang = parse_lang(&lang);
             // BIP39 词数 -> 熵长度映射（12/15/18/21/24 -> 128/160/192/224/256 bit）
@@ -439,9 +440,16 @@ fn run() -> anyhow::Result<()> {
             seed.zeroize();
         }
 
-        Cmd::MnemonicImport { mnemonic, mnemonic_file, lang, passphrase, path, full } => {
-            use bip32::{ DerivationPath, XPrv };
-            use sha2::{ Digest, Sha256 };
+        Cmd::MnemonicImport {
+            mnemonic,
+            mnemonic_file,
+            lang,
+            passphrase,
+            path,
+            full,
+        } => {
+            use bip32::{DerivationPath, XPrv};
+            use sha2::{Digest, Sha256};
 
             let lang = parse_lang(&lang);
             // 读取助记词来源：文件优先，否则使用命令行参数；均为空时报错
@@ -455,8 +463,7 @@ fn run() -> anyhow::Result<()> {
             } else {
                 anyhow::bail!("either --mnemonic or --mnemonic-file is required")
             };
-            let m = bip39::Mnemonic
-                ::parse_in(lang, &mn_text)
+            let m = bip39::Mnemonic::parse_in(lang, &mn_text)
                 .map_err(|e| security::errors::SecurityError::Parse(e.to_string()))?;
             // 助记词文本已解析，立即清理
             mn_text.zeroize();
