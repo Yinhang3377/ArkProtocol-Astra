@@ -10,17 +10,15 @@
 //! - encrypt(priv32, password, kdf, ...) -> (Crypto, nonce)
 //! - decrypt(keystore, password) -> priv32
 use crate::security::errors::SecurityError;
-use aes_gcm::{
-    aead::{Aead, KeyInit},
-    Aes256Gcm, Nonce,
-};
-use base64::{engine::general_purpose::STANDARD as B64, Engine as _};
+use aes_gcm::{ aead::{ Aead, KeyInit }, Aes256Gcm, Nonce };
+use base64::{ engine::general_purpose::STANDARD as B64, Engine as _ };
 use pbkdf2::pbkdf2_hmac;
 use scrypt as scrypt_crate;
 use scrypt_crate::Params as ScryptParams;
 use sha2::Sha256;
 use std::result::Result as StdResult;
 use zeroize::Zeroize;
+use rand::rngs::OsRng;
 
 pub const VERSION: u32 = 1;
 pub const CIPHER: &str = "AES-256-GCM";
@@ -39,16 +37,16 @@ pub struct Keystore {
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct Crypto {
     pub cipher: String, // "AES-256-GCM"
-    pub kdf: String,    // "scrypt" | "pbkdf2"
+    pub kdf: String, // "scrypt" | "pbkdf2"
     pub kdfparams: KdfParams,
-    pub nonce: String,      // base64(12B)
+    pub nonce: String, // base64(12B)
     pub ciphertext: String, // base64(密文+GCM标签)
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct KdfParams {
     pub salt: String, // base64
-    pub dklen: u32,   // 32
+    pub dklen: u32, // 32
     // PBKDF2
     #[serde(skip_serializing_if = "Option::is_none")]
     pub iterations: Option<u32>,
@@ -65,8 +63,7 @@ pub fn b64e(bytes: &[u8]) -> String {
     B64.encode(bytes)
 }
 pub fn b64d(s: &str) -> StdResult<Vec<u8>, SecurityError> {
-    B64.decode(s)
-        .map_err(|e| SecurityError::Decode(format!("base64 decode error: {}", e)))
+    B64.decode(s).map_err(|e| SecurityError::Decode(format!("base64 decode error: {}", e)))
 }
 
 /// 将 32 字节私钥加密为 keystore::Crypto。
@@ -85,14 +82,17 @@ pub fn encrypt(
     pbkdf2_iters: u32,
     n: u32,
     r: u32,
-    p: u32,
+    p: u32
 ) -> StdResult<(Crypto, [u8; 12]), SecurityError> {
     let mut salt = [0u8; 16];
     let mut nonce = [0u8; 12];
-    getrandom::getrandom(&mut salt)
-        .map_err(|e| SecurityError::Rand(format!("getrandom error: {}", e)))?;
-    getrandom::getrandom(&mut nonce)
-        .map_err(|e| SecurityError::Rand(format!("getrandom error: {}", e)))?;
+    // Use OsRng to avoid direct dependency on getrandom versions
+    {
+        use rand::RngCore;
+        let mut rng = OsRng;
+        rng.fill_bytes(&mut salt);
+        rng.fill_bytes(&mut nonce);
+    }
 
     let kdfparams = if kdf == "pbkdf2" {
         KdfParams {
@@ -115,8 +115,9 @@ pub fn encrypt(
     };
 
     let key_bytes = derive_key(password, kdf, &kdfparams)?;
-    let cipher = Aes256Gcm::new_from_slice(&key_bytes)
-        .map_err(|e| SecurityError::Crypto(format!("cipher init error: {}", e)))?;
+    let cipher = Aes256Gcm::new_from_slice(&key_bytes).map_err(|e|
+        SecurityError::Crypto(format!("cipher init error: {}", e))
+    )?;
     let nonce_ga = Nonce::from_slice(&nonce);
     let ct = cipher
         .encrypt(nonce_ga, privkey.as_slice())
@@ -140,14 +141,12 @@ pub fn encrypt(
 /// - 解密 -> 32B 私钥
 pub fn decrypt(crypto: &Crypto, password: &str) -> StdResult<[u8; 32], SecurityError> {
     if crypto.cipher != CIPHER {
-        return Err(SecurityError::Crypto(format!(
-            "unsupported cipher: {}",
-            crypto.cipher
-        )));
+        return Err(SecurityError::Crypto(format!("unsupported cipher: {}", crypto.cipher)));
     }
     let key = derive_key(password, &crypto.kdf, &crypto.kdfparams)?;
-    let cipher = Aes256Gcm::new_from_slice(&key)
-        .map_err(|e| SecurityError::Crypto(format!("cipher init error: {}", e)))?;
+    let cipher = Aes256Gcm::new_from_slice(&key).map_err(|e|
+        SecurityError::Crypto(format!("cipher init error: {}", e))
+    )?;
     let nonce_bytes = b64d(&crypto.nonce)?;
     let ct = b64d(&crypto.ciphertext)?;
     let nonce = Nonce::from_slice(&nonce_bytes);
@@ -192,9 +191,11 @@ fn derive_key(password: &str, kdf: &str, params: &KdfParams) -> StdResult<[u8; 3
             let r = params.r.unwrap_or(8);
             let p = params.p.unwrap_or(1);
             let log_n = (31 - n.leading_zeros()) as u8;
-            let sp = ScryptParams::new(log_n, r, p, params.dklen as usize)
-                .map_err(|e| SecurityError::Kdf(format!("scrypt params error: {}", e)))?;
-            scrypt_crate::scrypt(password.as_bytes(), &salt, &sp, &mut key)
+            let sp = ScryptParams::new(log_n, r, p, params.dklen as usize).map_err(|e|
+                SecurityError::Kdf(format!("scrypt params error: {}", e))
+            )?;
+            scrypt_crate
+                ::scrypt(password.as_bytes(), &salt, &sp, &mut key)
                 .map_err(|e| SecurityError::Kdf(format!("scrypt error: {}", e)))?;
         }
         other => {

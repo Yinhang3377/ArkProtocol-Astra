@@ -5,7 +5,7 @@
 
 use assert_cmd::Command;
 use serde_json::Value;
-use std::{fs, path::Path};
+use std::{ fs, path::Path };
 
 fn create_keystore(ks: &Path, pwd: &str, mn: &str) {
     Command::cargo_bin("ark-wallet")
@@ -39,21 +39,17 @@ fn export_json_prints_privkey() {
 
     let assert = Command::cargo_bin("ark-wallet")
         .unwrap()
-        .args([
-            "keystore",
-            "export",
-            "--file",
-            ks.to_str().unwrap(),
-            "--password-stdin",
-            "--json",
-        ])
+        .args(["keystore", "export", "--file", ks.to_str().unwrap(), "--password-stdin", "--json"])
         .write_stdin(pwd)
         .assert()
         .success();
 
     let out = String::from_utf8(assert.get_output().stdout.clone()).unwrap();
     let v: Value = serde_json::from_str(&out).unwrap();
-    let hex = v.get("privkey_hex").and_then(|x| x.as_str()).unwrap();
+    let hex = v
+        .get("privkey_hex")
+        .and_then(|x| x.as_str())
+        .unwrap();
     assert_eq!(hex.len(), 64);
     assert!(hex.chars().all(|c| c.is_ascii_hexdigit()));
     dir.close().ok();
@@ -89,7 +85,10 @@ fn export_json_writes_file_path() {
     let body = String::from_utf8(assert.get_output().stdout.clone()).unwrap();
     let v: Value = serde_json::from_str(&body).unwrap();
     // Canonicalize both paths to avoid macOS /private vs /var mismatch
-    let file_out = v.get("file").and_then(|x| x.as_str()).unwrap();
+    let file_out = v
+        .get("file")
+        .and_then(|x| x.as_str())
+        .unwrap();
     let file_out_canon = fs::canonicalize(std::path::Path::new(file_out)).unwrap();
     let out_canon = fs::canonicalize(&out).unwrap();
     assert_eq!(file_out_canon, out_canon);

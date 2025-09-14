@@ -40,9 +40,18 @@ fn create_json_prints_address_path_file() {
     // 校验 stdout JSON
     let out = String::from_utf8(assert.get_output().stdout.clone()).unwrap();
     let v: Value = serde_json::from_str(&out).unwrap();
-    let addr = v.get("address").and_then(|x| x.as_str()).unwrap();
-    let path_out = v.get("path").and_then(|x| x.as_str()).unwrap();
-    let file_out = v.get("file").and_then(|x| x.as_str()).unwrap();
+    let addr = v
+        .get("address")
+        .and_then(|x| x.as_str())
+        .unwrap();
+    let path_out = v
+        .get("path")
+        .and_then(|x| x.as_str())
+        .unwrap();
+    let file_out = v
+        .get("file")
+        .and_then(|x| x.as_str())
+        .unwrap();
 
     assert!(!addr.is_empty());
     assert_eq!(path_out, path);
@@ -55,7 +64,13 @@ fn create_json_prints_address_path_file() {
     // 读取 keystore 文件，校验地址一致
     let body = fs::read_to_string(&ks).unwrap();
     let kv: Value = serde_json::from_str(&body).unwrap();
-    assert_eq!(kv.get("address").and_then(|x| x.as_str()).unwrap(), addr);
+    assert_eq!(
+        kv
+            .get("address")
+            .and_then(|x| x.as_str())
+            .unwrap(),
+        addr
+    );
 
     dir.close().ok();
 }
