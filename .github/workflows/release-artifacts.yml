@@ -21,6 +21,9 @@ jobs:
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             artifact_name: windows-x86_64
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            artifact_name: macos-x86_64
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -30,6 +33,18 @@ jobs:
 
       - name: Install target
         run: rustup target add ${{ matrix.target }}
+
+      - name: Cache cargo registry and target
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          # include OS and toolchain in key to avoid collisions across runners
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}-${{ matrix.target }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
 
       - name: Build release
         run: cargo build --manifest-path ./crates/ark-wallet-cli/Cargo.toml --release --target ${{ matrix.target }}
@@ -44,6 +59,11 @@ jobs:
 
       - name: Package Linux artifact
         if: matrix.os == 'ubuntu-latest'
+        run: |
+          tar -czf dist/ark-wallet-${{ github.ref_name }}-${{ matrix.artifact_name }}.tar.gz -C target/${{ matrix.target }}/release ark-wallet
+
+      - name: Package macOS artifact
+        if: matrix.os == 'macos-latest'
         run: |
           tar -czf dist/ark-wallet-${{ github.ref_name }}-${{ matrix.artifact_name }}.tar.gz -C target/${{ matrix.target }}/release ark-wallet
 
