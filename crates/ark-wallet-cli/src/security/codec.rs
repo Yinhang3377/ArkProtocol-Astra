@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 //! 编码与校验：Base58Check。
-use sha2::{ Digest, Sha256 };
 use crate::security::errors::SecurityError;
+use sha2::{Digest, Sha256};
 
 pub fn b58check_encode(version: u8, payload: &[u8]) -> String {
     let mut data = Vec::with_capacity(1 + payload.len() + 4);
@@ -13,8 +13,7 @@ pub fn b58check_encode(version: u8, payload: &[u8]) -> String {
 }
 
 pub fn b58check_decode(s: &str) -> Result<(u8, Vec<u8>), SecurityError> {
-    let raw = bs58
-        ::decode(s)
+    let raw = bs58::decode(s)
         .into_vec()
         .map_err(|e| SecurityError::Decode(format!("base58 decode error: {}", e)))?;
     if raw.len() < 5 {

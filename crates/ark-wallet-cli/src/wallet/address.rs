@@ -5,10 +5,19 @@
 //!
 //! 本文件仅包含纯函数与单元测试，不包含 CLI JSON 代码。
 
-use sha2::{ Digest, Sha256 };
+use sha2::{Digest, Sha256};
 
 /// 简单 Base58 地址（无版本/校验和）
-pub fn from_pubkey(pk_compressed: &[u8]) -> String {
+///
+/// Deprecated: this produces an address without a version byte or checksum.
+/// It's vulnerable to accidental collisions or accidental acceptance of tampered
+/// addresses. Prefer `from_pubkey_b58check` which encodes a version byte and
+/// a 4-byte checksum (double-SHA256) to protect against copy/paste errors and
+/// tampering. Keep this function only for backwards compatibility; do not use
+/// it on mainnet wallets.
+#[allow(dead_code)]
+fn _legacy_from_pubkey(pk_compressed: &[u8]) -> String {
+    // legacy helper kept for historical reasons but not exported.
     let h = Sha256::digest(pk_compressed);
     bs58::encode(&h[..20]).into_string()
 }
@@ -33,7 +42,7 @@ mod tests {
         let mut pk = [0u8; 33];
         pk[0] = 0x02;
         pk[32] = 0xaa;
-        let addr = from_pubkey(&pk);
+        let addr = _legacy_from_pubkey(&pk);
         let decoded = bs58::decode(&addr).into_vec().expect("valid base58");
         assert_eq!(decoded.len(), 20);
     }
@@ -44,9 +53,9 @@ mod tests {
         pk1[0] = 0x02;
         let mut pk2 = pk1;
         pk2[32] = 1;
-        let a1 = from_pubkey(&pk1);
-        let a1b = from_pubkey(&pk1);
-        let a2 = from_pubkey(&pk2);
+        let a1 = _legacy_from_pubkey(&pk1);
+        let a1b = _legacy_from_pubkey(&pk1);
+        let a2 = _legacy_from_pubkey(&pk2);
         assert_eq!(a1, a1b);
         assert_ne!(a1, a2);
     }

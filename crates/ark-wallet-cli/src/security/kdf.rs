@@ -12,12 +12,9 @@ pub fn validate_kdf_choice(kdf: &str) -> Result<KdfKind, SecurityError> {
     match kdf.to_lowercase().as_str() {
         "scrypt" => Ok(KdfKind::Scrypt),
         "pbkdf2" => Ok(KdfKind::Pbkdf2),
-        other =>
-            Err(
-                SecurityError::InvalidParams(
-                    format!("invalid kdf: {other}. allowed: scrypt, pbkdf2")
-                )
-            ),
+        other => Err(SecurityError::InvalidParams(format!(
+            "invalid kdf: {other}. allowed: scrypt, pbkdf2"
+        ))),
     }
 }
 
@@ -26,23 +23,21 @@ pub fn validate_kdf_params(
     iterations: u32,
     n: u32,
     r: u32,
-    p: u32
+    p: u32,
 ) -> Result<(), SecurityError> {
     match kind {
         KdfKind::Scrypt => {
             if n < 1 << 15 || r < 8 || p < 1 {
-                return Err(
-                    SecurityError::InvalidParams(
-                        "scrypt params too weak (min n=32768, r=8, p=1)".into()
-                    )
-                );
+                return Err(SecurityError::InvalidParams(
+                    "scrypt params too weak (min n=32768, r=8, p=1)".into(),
+                ));
             }
         }
         KdfKind::Pbkdf2 => {
             if iterations < 50_000 {
-                return Err(
-                    SecurityError::InvalidParams("pbkdf2 iterations too low (min 50000)".into())
-                );
+                return Err(SecurityError::InvalidParams(
+                    "pbkdf2 iterations too low (min 50000)".into(),
+                ));
             }
         }
     }

@@ -16,8 +16,8 @@
 
 use bip39::Language;
 use clap::{ ArgAction, Parser, Subcommand };
-use std::path::Path;
 use sha2::Digest;
+use std::path::Path;
 use zeroize::{ Zeroize, Zeroizing }; // <--- 新增
 
 // 引入内部模块
@@ -41,6 +41,50 @@ fn parse_lang(code: &str) -> Language {
         }
         // 默认英文
         _ => Language::English,
+    }
+}
+
+/// Map an `anyhow::Error` (and its source chain) to a small integer exit code.
+/// - 0: success (handled by process exit)
+/// - 1: unspecified/general error (fallback)
+/// - 2: invalid parameters / user input
+/// - 3: IO errors (filesystem, stdin/stdout)
+/// - 4: integrity / checksum failures
+/// - 5: randomness failure
+/// - 6: crypto failures
+/// - 7: decode/format errors
+/// - 8: parse errors
+/// - 9: kdf errors
+fn exit_code_for_error(e: &anyhow::Error) -> i32 {
+    use crate::security::errors::SecurityError;
+
+    // Search the error chain for a SecurityError or std::io::Error
+    for cause in e.chain() {
+        if let Some(se) = cause.downcast_ref::<SecurityError>() {
+            return match se {
+                SecurityError::InvalidParams(_) => 2,
+                SecurityError::Io(_) => 3,
+                SecurityError::Integrity => 4,
+                SecurityError::Rand(_) => 5,
+                SecurityError::Crypto(_) => 6,
+                SecurityError::Decode(_) => 7,
+                SecurityError::Parse(_) => 8,
+                SecurityError::Kdf(_) => 9,
+            };
+        }
+        if cause.is::<std::io::Error>() {
+            return 3;
+        }
+    }
+
+    1
+}
+
+fn main() {
+    if let Err(e) = run() {
+        eprintln!("error: {}", e);
+        let code = exit_code_for_error(&e);
+        std::process::exit(code);
     }
 }
 
@@ -277,11 +321,11 @@ fn read_password_interactive(
     let input = Password::new()
         .with_prompt(&prompt_clean)
         .interact()
-        .map_err(|e|
+        .map_err(|e| {
             crate::security::errors::SecurityError::Io(
                 std::io::Error::new(std::io::ErrorKind::Other, format!("dialoguer failed: {}", e))
             )
-        )?;
+        })?;
     Ok(Zeroizing::new(input))
 }
 
@@ -352,7 +396,7 @@ fn resolve_password_create(
 // 主流程：解析命令并执行相应分支。
 // - 注意清理敏感数据（随机熵、seed、私钥等），避免留在内存中。
 // - JSON 模式下尽量输出结构化信息，便于脚本/测试消费。
-fn main() -> anyhow::Result<()> {
+fn run() -> anyhow::Result<()> {
     use std::fs;
 
     let cli = Cli::parse();
@@ -371,7 +415,11 @@ fn main() -> anyhow::Result<()> {
             };
             // 生成随机熵并构造助记词；生产环境建议使用系统强随机
             let mut buf = [0u8; 32];
-            getrandom::getrandom(&mut buf).map_err(|e| anyhow::anyhow!("getrandom failed: {e}"))?;
+            getrandom
+                ::getrandom(&mut buf)
+                .map_err(|e|
+                    crate::security::errors::SecurityError::Rand(format!("getrandom failed: {}", e))
+                )?;
             let m = Mnemonic::from_entropy_in(lang, &buf[..entropy_bytes])?;
             // 由助记词 + 可选 passphrase 生成种子（用于后续 BIP32 派生）
             let mut seed = m.to_seed(passphrase.as_deref().unwrap_or(""));
@@ -462,24 +510,22 @@ fn main() -> anyhow::Result<()> {
                     password_confirm,
                     out,
                     overwrite,
-                    b58check,
+                    // b58check intentionally not used for create; keystore always stored as Base58Check
                     .. // 保底：忽略未来新增字段
                 } => {
                     // 解析语言代码 -> bip39::Language
                     let bip_lang = parse_lang(&lang);
 
-                    let kdf_kind = crate::security
-                        ::validate_kdf_choice(&kdf)
-                        .map_err(|e| anyhow::anyhow!("kdf choice error: {}", e))?;
+                    let kdf_kind = crate::security::validate_kdf_choice(&kdf).map_err(|e| e)?;
                     crate::security
                         ::validate_kdf_params(kdf_kind, iterations, n, r, p)
-                        .map_err(|e| anyhow::anyhow!("kdf params error: {}", e))?;
+                        .map_err(|e| e)?;
 
                     let passphrase = Zeroizing::new(passphrase.unwrap_or_default());
 
                     let mut mn_text = if let Some(file) = mnemonic_file {
                         fs::read_to_string(file)
-                            .map_err(|e| anyhow::anyhow!("io error: {}", e))?
+                            .map_err(|e| e)?
                             .trim()
                             .to_string()
                     } else if let Some(mn) = mnemonic {
@@ -495,12 +541,12 @@ fn main() -> anyhow::Result<()> {
                             passphrase.as_str(),
                             &path
                         )
-                        .map_err(|e| anyhow::anyhow!("hd derive error: {}", e))?;
-                    let address = if b58check {
-                        wallet::address::from_pubkey_b58check(&pk33)
-                    } else {
-                        wallet::address::from_pubkey(&pk33)
-                    };
+                        .map_err(|e| e)?;
+                    // Always use Base58Check for stored/printed addresses to avoid
+                    // insecure legacy format. Keep `b58check` flag for import-time
+                    // validation behavior, but the keystore/address we produce will
+                    // be the safer Base58Check format.
+                    let address = wallet::address::from_pubkey_b58check(&pk33);
                     // 助记词文本不再需要，尽早清理
                     mn_text.zeroize();
 
@@ -510,7 +556,7 @@ fn main() -> anyhow::Result<()> {
                         password_stdin,
                         password_prompt,
                         password_confirm
-                    ).map_err(|e| anyhow::anyhow!("password error: {}", e))?;
+                    ).map_err(|e| e)?;
                     // 最低长度约束（示例值：8），可根据安全要求调整
                     if password.len() < 8 {
                         anyhow::bail!("password too short (min 8 chars)");
@@ -519,7 +565,7 @@ fn main() -> anyhow::Result<()> {
                     // 加密并构造 keystore JSON
                     let (crypto, _nonce) = wallet::keystore
                         ::encrypt(&priv32, password.as_str(), &kdf, iterations, n, r, p)
-                        .map_err(|e| anyhow::anyhow!("keystore encrypt error: {}", e))?;
+                        .map_err(|e| e)?;
                     let path_str = path.clone(); // JSON 输出中保留原始派生路径
                     let ks = wallet::keystore::Keystore {
                         version: wallet::keystore::VERSION,
@@ -537,7 +583,7 @@ fn main() -> anyhow::Result<()> {
                     // 使用安全原子写入，返回规范化绝对路径
                     let out_abs = crate::security
                         ::secure_atomic_write(p, json.as_bytes())
-                        .map_err(|e| anyhow::anyhow!("io error writing keystore: {}", e))?;
+                        .map_err(|e| e)?;
                     if cli.json {
                         let out_json =
                             serde_json::json!({
@@ -566,9 +612,7 @@ fn main() -> anyhow::Result<()> {
                     b58check,
                 } => {
                     // 读取并反序列化 keystore；版本不兼容直接拒绝
-                    let raw = fs
-                        ::read_to_string(&file)
-                        .map_err(|e| anyhow::anyhow!("io error: {}", e))?;
+                    let raw = fs::read_to_string(&file).map_err(|e| e)?;
                     let ks: wallet::keystore::Keystore = serde_json::from_str(&raw)?;
                     if ks.version != wallet::keystore::VERSION {
                         anyhow::bail!("unsupported keystore version: {}", ks.version);
@@ -579,12 +623,13 @@ fn main() -> anyhow::Result<()> {
                         password,
                         password_stdin,
                         password_prompt
-                    ).map_err(|e| anyhow::anyhow!("password error: {}", e))?;
+                    ).map_err(|e| e)?;
                     let priv32 = wallet::keystore
                         ::decrypt(&ks.crypto, password.as_str())
-                        .map_err(|e| anyhow::anyhow!("keystore decrypt error: {}", e))?;
+                        .map_err(|e| e)?;
                     let pk33 = wallet::hd::pubkey_from_privkey_secp256k1(&priv32)?;
-                    let address = wallet::address::from_pubkey(&pk33);
+                    // Use Base58Check for CLI output/import comparisons.
+                    let address = wallet::address::from_pubkey_b58check(&pk33);
                     // If import requests b58check validation, check keystore.address matches derived payload
                     if b58check {
                         match crate::security::b58check_decode(&ks.address) {
@@ -634,9 +679,7 @@ fn main() -> anyhow::Result<()> {
                     b58check: _,
                 } => {
                     // 加载 keystore 并校验版本
-                    let raw = fs
-                        ::read_to_string(&file)
-                        .map_err(|e| anyhow::anyhow!("io error: {}", e))?;
+                    let raw = fs::read_to_string(&file).map_err(|e| e)?;
                     let ks: wallet::keystore::Keystore = serde_json::from_str(&raw)?;
                     if ks.version != wallet::keystore::VERSION {
                         anyhow::bail!("unsupported keystore version: {}", ks.version);
@@ -647,10 +690,10 @@ fn main() -> anyhow::Result<()> {
                         password,
                         password_stdin,
                         password_prompt
-                    ).map_err(|e| anyhow::anyhow!("password error: {}", e))?;
+                    ).map_err(|e| e)?;
                     let priv32 = wallet::keystore
                         ::decrypt(&ks.crypto, password.as_str())
-                        .map_err(|e| anyhow::anyhow!("keystore decrypt error: {}", e))?;
+                        .map_err(|e| e)?;
                     let hex = wallet::keystore::hex_lower(&priv32);
 
                     if cli.json {
@@ -658,7 +701,7 @@ fn main() -> anyhow::Result<()> {
                             // 写入文件，同时在 JSON 中返回规范化（绝对）路径与私钥 hex
                             let abs = crate::security
                                 ::secure_atomic_write(&outp, hex.as_bytes())
-                                .map_err(|e| anyhow::anyhow!("io error writing priv file: {}", e))?;
+                                .map_err(|e| e)?;
                             let out =
                                 serde_json::json!({ "privkey_hex": hex, "file": abs.to_string_lossy() });
                             println!("{}", serde_json::to_string_pretty(&out)?);
@@ -671,7 +714,7 @@ fn main() -> anyhow::Result<()> {
                         // 非 JSON 模式：写入文件，并在 stdout 打印规范化路径（用于管道/测试消费）
                         let abs = crate::security
                             ::secure_atomic_write(&outp, hex.as_bytes())
-                            .map_err(|e| anyhow::anyhow!("io error writing priv file: {}", e))?;
+                            .map_err(|e| e)?;
                         println!("{}", abs.display());
                     } else {
                         // 仅打印 hex 到 stdout

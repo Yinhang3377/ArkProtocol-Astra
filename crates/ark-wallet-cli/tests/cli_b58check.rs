@@ -1,8 +1,8 @@
 //! Tests for Base58Check address generation and import validation
 
 use assert_cmd::Command;
-use predicates::str::contains;
 use predicates::prelude::PredicateBooleanExt;
+use predicates::str::contains;
 use std::fs;
 
 #[test]
@@ -111,9 +111,8 @@ fn import_rejects_tampered_b58check() {
         .assert()
         .failure()
         .stderr(
-            contains("keystore address is not valid Base58Check").or(
-                contains("checksum/payload mismatch")
-            )
+            contains("keystore address is not valid Base58Check")
+                .or(contains("checksum/payload mismatch")),
         );
 
     let _ = fs::remove_dir_all(dir);

@@ -38,7 +38,7 @@ fn run_create(output_name: &str, kdf_args: &[&str]) -> (String, Value) {
         "--out",
         outfile.to_str().unwrap(),
         "--overwrite",
-        "--json"
+        "--json",
     ];
     // 追加 KDF 参数
     args.extend_from_slice(kdf_args);
@@ -46,7 +46,12 @@ fn run_create(output_name: &str, kdf_args: &[&str]) -> (String, Value) {
 
     let output = cmd.assert().success().get_output().stdout.clone();
     let v: Value = serde_json::from_slice(&output).expect("json output");
-    let file_path = v.get("file").expect("file field").as_str().expect("string").to_string();
+    let file_path = v
+        .get("file")
+        .expect("file field")
+        .as_str()
+        .expect("string")
+        .to_string();
     // 读取 keystore JSON 实体
     let raw = fs::read_to_string(&file_path).expect("read keystore");
     let ks: Value = serde_json::from_str(&raw).expect("parse keystore");
@@ -94,11 +99,11 @@ fn randomness_scrypt_multiple_creates_differ() {
     // scrypt 明确给出参数（使用通过校验的最小安全参数）
     let (_f1, ks1) = run_create(
         "scrypt_a.json",
-        &["--kdf", "scrypt", "--n", "32768", "--r", "8", "--p", "1"]
+        &["--kdf", "scrypt", "--n", "32768", "--r", "8", "--p", "1"],
     );
     let (_f2, ks2) = run_create(
         "scrypt_b.json",
-        &["--kdf", "scrypt", "--n", "32768", "--r", "8", "--p", "1"]
+        &["--kdf", "scrypt", "--n", "32768", "--r", "8", "--p", "1"],
     );
 
     let (salt1, nonce1, ct1) = extract_crypto_fields(&ks1);
@@ -112,8 +117,14 @@ fn randomness_scrypt_multiple_creates_differ() {
 #[test]
 fn randomness_pbkdf2_multiple_creates_differ() {
     // pbkdf2 使用默认较大迭代（保持与 CLI 默认一致或显式指定）
-    let (_f1, ks1) = run_create("pbkdf2_a.json", &["--kdf", "pbkdf2", "--iterations", "600000"]);
-    let (_f2, ks2) = run_create("pbkdf2_b.json", &["--kdf", "pbkdf2", "--iterations", "600000"]);
+    let (_f1, ks1) = run_create(
+        "pbkdf2_a.json",
+        &["--kdf", "pbkdf2", "--iterations", "600000"],
+    );
+    let (_f2, ks2) = run_create(
+        "pbkdf2_b.json",
+        &["--kdf", "pbkdf2", "--iterations", "600000"],
+    );
 
     let (salt1, nonce1, ct1) = extract_crypto_fields(&ks1);
     let (salt2, nonce2, ct2) = extract_crypto_fields(&ks2);
