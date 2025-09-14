@@ -16,15 +16,13 @@
 
 use bip39::Language;
 use clap::{ ArgAction, Parser, Subcommand };
-use std::path::Path;
-use zeroize::{ Zeroize, Zeroizing }; // <--- 新增
+use zeroize::{ Zeroize, Zeroizing };
 
 // 引入内部模块
 mod security;
 mod wallet;
 
 /// 解析命令行传入的语言代码为 bip39::Language。
-/// - 仅当启用 feature="zh" 才会真正用到简体中文词表；否则回退到英文，保证可编译。
 fn parse_lang(code: &str) -> Language {
     match code {
         "zh" => {
@@ -40,6 +38,50 @@ fn parse_lang(code: &str) -> Language {
         }
         // 默认英文
         _ => Language::English,
+    }
+}
+
+/// Map an `anyhow::Error` (and its source chain) to a small integer exit code.
+/// - 0: success (handled by process exit)
+/// - 1: unspecified/general error (fallback)
+/// - 2: invalid parameters / user input
+/// - 3: IO errors (filesystem, stdin/stdout)
+/// - 4: integrity / checksum failures
+/// - 5: randomness failure
+/// - 6: crypto failures
+/// - 7: decode/format errors
+/// - 8: parse errors
+/// - 9: kdf errors
+fn exit_code_for_error(e: &anyhow::Error) -> i32 {
+    use crate::security::errors::SecurityError;
+
+    // Search the error chain for a SecurityError or std::io::Error
+    for cause in e.chain() {
+        if let Some(se) = cause.downcast_ref::<SecurityError>() {
+            return match se {
+                SecurityError::InvalidParams(_) => 2,
+                SecurityError::Io(_) => 3,
+                SecurityError::Integrity => 4,
+                SecurityError::Rand(_) => 5,
+                SecurityError::Crypto(_) => 6,
+                SecurityError::Decode(_) => 7,
+                SecurityError::Parse(_) => 8,
+                SecurityError::Kdf(_) => 9,
+            };
+        }
+        if cause.is::<std::io::Error>() {
+            return 3;
+        }
+    }
+
+    1
+}
+
+fn main() {
+    if let Err(e) = run() {
+        eprintln!("error: {}", e);
+        let code = exit_code_for_error(&e);
+        std::process::exit(code);
     }
 }
 
@@ -171,6 +213,9 @@ enum KsCmd {
         /// 若存在则覆盖
         #[arg(long, action = ArgAction::SetTrue)]
         overwrite: bool,
+        /// Use Base58Check (versioned+checksum) for address output and validation
+        #[arg(long, action = ArgAction::SetTrue)]
+        b58check: bool,
     },
 
     // Import：读取 keystore JSON，解密得到私钥，重新计算地址并按需输出
@@ -194,6 +239,9 @@ enum KsCmd {
         /// 输出完整信息（含公钥十六进制）
         #[arg(long, action = ArgAction::SetTrue)]
         full: bool,
+        /// Treat addresses as Base58Check and validate checksum/payload
+        #[arg(long, action = ArgAction::SetTrue)]
+        b58check: bool,
     },
 
     // Export：从 keystore 解密出私钥，打印 hex 或写入文件；--json 时输出结构化 JSON
@@ -217,6 +265,9 @@ enum KsCmd {
         /// 输出到文件（可选），默认打印 hex
         #[arg(long, num_args = 0..=1, default_missing_value = "privkey.hex")]
         out_priv: Option<String>,
+        /// Treat addresses as Base58Check for output
+        #[arg(long, action = ArgAction::SetTrue)]
+        b58check: bool,
     },
 }
 
@@ -228,10 +279,10 @@ fn now_rfc3339() -> String {
 // 从 STDIN 读取完整输入作为密码（用于 --password-stdin）。
 // - 去除末尾的 \r\n（Windows）或 \n（类 Unix）
 // - 使用 Zeroizing 包装，超出作用域时自动清零内存，降低泄露风险
-fn read_password_from_stdin() -> anyhow::Result<Zeroizing<String>> {
-    use std::io::{ self, Read };
+fn read_password_from_stdin() -> Result<Zeroizing<String>, crate::security::errors::SecurityError> {
+    use std::io::Read;
     let mut s = String::new();
-    io::stdin().read_to_string(&mut s)?;
+    std::io::stdin().read_to_string(&mut s).map_err(crate::security::errors::SecurityError::Io)?;
     // 去除换行（支持 \r\n 和 \n）
     let s = s.trim_end_matches(&['\r', '\n'][..]).to_string();
     Ok(Zeroizing::new(s))
@@ -240,7 +291,9 @@ fn read_password_from_stdin() -> anyhow::Result<Zeroizing<String>> {
 // 交互式读取密码（用于 --password-prompt）。
 // - 当检测到非交互环境（非 TTY），不会阻塞等待隐藏输入，而是回退为读取一行 STDIN
 // - 可通过设置 ARK_WALLET_WARN_NO_TTY=1 打印回退提示，默认静默
-fn read_password_interactive(prompt: &str) -> anyhow::Result<Zeroizing<String>> {
+fn read_password_interactive(
+    prompt: &str
+) -> Result<Zeroizing<String>, crate::security::errors::SecurityError> {
     use dialoguer::Password;
 
     // 非 TTY（例如管道、CI）时，回退为从 STDIN 读取
@@ -251,14 +304,25 @@ fn read_password_interactive(prompt: &str) -> anyhow::Result<Zeroizing<String>> 
         }
         use std::io::{ self, BufRead };
         let mut line = String::new();
-        io::stdin().lock().read_line(&mut line)?;
+        io
+            ::stdin()
+            .lock()
+            .read_line(&mut line)
+            .map_err(crate::security::errors::SecurityError::Io)?;
         let pw = line.trim_end_matches(&['\r', '\n'][..]).to_string();
         return Ok(Zeroizing::new(pw));
     }
 
     // 去掉提示结尾的冒号或空格，避免重复显示 "Password: :"
     let prompt_clean = prompt.trim_end_matches(&[':', ' '][..]).to_string();
-    let input = Password::new().with_prompt(&prompt_clean).interact()?;
+    let input = Password::new()
+        .with_prompt(&prompt_clean)
+        .interact()
+        .map_err(|e| {
+            crate::security::errors::SecurityError::Io(
+                std::io::Error::other(format!("dialoguer failed: {}", e))
+            )
+        })?;
     Ok(Zeroizing::new(input))
 }
 
@@ -269,17 +333,21 @@ fn resolve_password(
     pw: Option<String>,
     from_stdin: bool,
     prompt: bool
-) -> anyhow::Result<Zeroizing<String>> {
+) -> Result<Zeroizing<String>, crate::security::errors::SecurityError> {
     // 以位加法统计来源数量（true 视为 1），确保恰好一个来源被选择
     let sources = (pw.is_some() as u8) + (from_stdin as u8) + (prompt as u8);
     if sources == 0 {
-        anyhow::bail!(
-            "password is required: provide --password or --password-stdin or --password-prompt"
+        return Err(
+            crate::security::errors::SecurityError::InvalidParams(
+                "password is required: provide --password or --password-stdin or --password-prompt".to_string()
+            )
         );
     }
     if sources > 1 {
-        anyhow::bail!(
-            "conflicting password sources: use only one of --password/--password-stdin/--password-prompt"
+        return Err(
+            crate::security::errors::SecurityError::InvalidParams(
+                "conflicting password sources: use only one of --password/--password-stdin/--password-prompt".to_string()
+            )
         );
     }
     if let Some(p) = pw {
@@ -300,33 +368,32 @@ fn resolve_password_create(
     from_stdin: bool,
     prompt: bool,
     confirm: bool
-) -> anyhow::Result<Zeroizing<String>> {
+) -> Result<Zeroizing<String>, crate::security::errors::SecurityError> {
     let pwd = resolve_password(pw, from_stdin, prompt)?;
     if confirm {
         if !prompt {
-            anyhow::bail!("--password-confirm requires --password-prompt");
+            return Err(
+                crate::security::errors::SecurityError::InvalidParams(
+                    "--password-confirm requires --password-prompt".to_string()
+                )
+            );
         }
         let pwd2 = read_password_interactive("Confirm password: ")?;
         if pwd.as_str() != pwd2.as_str() {
-            anyhow::bail!("passwords do not match");
+            return Err(
+                crate::security::errors::SecurityError::InvalidParams(
+                    "passwords do not match".to_string()
+                )
+            );
         }
     }
     Ok(pwd)
 }
 
-// 校验 KDF 是否受支持（当前仅 scrypt 与 pbkdf2）。
-// - 统一在解析命令后尽早校验，避免进入昂贵流程后才失败。
-fn validate_kdf(kdf: &str) -> anyhow::Result<()> {
-    match kdf {
-        "scrypt" | "pbkdf2" => Ok(()),
-        other => anyhow::bail!("invalid kdf: {other}. allowed: scrypt, pbkdf2"),
-    }
-}
-
 // 主流程：解析命令并执行相应分支。
 // - 注意清理敏感数据（随机熵、seed、私钥等），避免留在内存中。
 // - JSON 模式下尽量输出结构化信息，便于脚本/测试消费。
-fn main() -> anyhow::Result<()> {
+fn run() -> anyhow::Result<()> {
     use std::fs;
 
     let cli = Cli::parse();
@@ -345,7 +412,11 @@ fn main() -> anyhow::Result<()> {
             };
             // 生成随机熵并构造助记词；生产环境建议使用系统强随机
             let mut buf = [0u8; 32];
-            getrandom::getrandom(&mut buf).map_err(|e| anyhow::anyhow!("getrandom failed: {e}"))?;
+            {
+                use rand::RngCore;
+                let mut rng = rand::rngs::OsRng;
+                rng.fill_bytes(&mut buf);
+            }
             let m = Mnemonic::from_entropy_in(lang, &buf[..entropy_bytes])?;
             // 由助记词 + 可选 passphrase 生成种子（用于后续 BIP32 派生）
             let mut seed = m.to_seed(passphrase.as_deref().unwrap_or(""));
@@ -373,13 +444,21 @@ fn main() -> anyhow::Result<()> {
             let lang = parse_lang(&lang);
             // 读取助记词来源：文件优先，否则使用命令行参数；均为空时报错
             let mut mn_text = if let Some(file) = mnemonic_file {
-                fs::read_to_string(file)?.trim().to_string()
+                fs::read_to_string(file)
+                    .map_err(crate::security::errors::SecurityError::Io)?
+                    .trim()
+                    .to_string()
             } else if let Some(mn) = mnemonic {
                 mn
             } else {
                 anyhow::bail!("either --mnemonic or --mnemonic-file is required")
             };
-            let m = bip39::Mnemonic::parse_in(lang, &mn_text)?;
+            let m = bip39::Mnemonic
+                ::parse_in(lang, &mn_text)
+                .map_err(|e| security::errors::SecurityError::Parse(e.to_string()))?;
+            // 助记词文本已解析，立即清理
+            mn_text.zeroize();
+
             let mut seed = m.to_seed(passphrase.as_deref().unwrap_or(""));
             // 解析 BIP32 路径并派生扩展私钥；随后得到公钥与演示用地址
             let dp: DerivationPath = path.parse()?;
@@ -410,7 +489,6 @@ fn main() -> anyhow::Result<()> {
                 println!("Address: {address}");
             }
             // 清理敏感数据
-            mn_text.zeroize();
             seed.zeroize();
         }
 
@@ -433,20 +511,11 @@ fn main() -> anyhow::Result<()> {
                     password_confirm,
                     out,
                     overwrite,
-                    .. // 保底：忽略未来新增字段
+                    b58check: _,
                 } => {
-                    // 解析语言代码 -> bip39::Language
-                    let bip_lang = parse_lang(&lang);
-
-                    let kdf_kind = crate::security
-                        ::validate_kdf_choice(&kdf)
-                        .map_err(anyhow::Error::msg)?;
-                    crate::security
-                        ::validate_kdf_params(kdf_kind, iterations, n, r, p)
-                        .map_err(anyhow::Error::msg)?;
-
-                    let passphrase = Zeroizing::new(passphrase.unwrap_or_default());
-
+                    use std::path::Path;
+                    let lang = parse_lang(&lang);
+                    // 优先从文件读取助记词；否则从命令行；缺失时报错
                     let mut mn_text = if let Some(file) = mnemonic_file {
                         fs::read_to_string(file)?.trim().to_string()
                     } else if let Some(mn) = mnemonic {
@@ -456,12 +525,16 @@ fn main() -> anyhow::Result<()> {
                     };
 
                     let (priv32, pk33, _) = wallet::hd::derive_priv_from_mnemonic(
-                        bip_lang, // <--- 改为解析后的 Language
+                        lang, // 已解析的 Language
                         &mn_text,
-                        passphrase.as_str(),
+                        passphrase.as_deref().unwrap_or(""),
                         &path
                     )?;
-                    let address = wallet::address::from_pubkey(&pk33);
+                    // Always use Base58Check for stored/printed addresses to avoid
+                    // insecure legacy format. Keep `b58check` flag for import-time
+                    // validation behavior, but the keystore/address we produce will
+                    // be the safer Base58Check format.
+                    let address = wallet::address::from_pubkey_b58check(&pk33);
                     // 助记词文本不再需要，尽早清理
                     mn_text.zeroize();
 
@@ -476,6 +549,10 @@ fn main() -> anyhow::Result<()> {
                     if password.len() < 8 {
                         anyhow::bail!("password too short (min 8 chars)");
                     }
+
+                    // Validate KDF choice and parameters to reject weak configs early
+                    let kdf_kind = crate::security::validate_kdf_choice(&kdf)?;
+                    crate::security::validate_kdf_params(kdf_kind, iterations, n, r, p)?;
 
                     // 加密并构造 keystore JSON
                     let (crypto, _nonce) = wallet::keystore::encrypt(
@@ -522,7 +599,14 @@ fn main() -> anyhow::Result<()> {
                     }
                 }
 
-                KsCmd::Import { file, password, password_stdin, password_prompt, full } => {
+                KsCmd::Import {
+                    file,
+                    password,
+                    password_stdin,
+                    password_prompt,
+                    full,
+                    b58check,
+                } => {
                     // 读取并反序列化 keystore；版本不兼容直接拒绝
                     let raw = fs::read_to_string(&file)?;
                     let ks: wallet::keystore::Keystore = serde_json::from_str(&raw)?;
@@ -534,7 +618,26 @@ fn main() -> anyhow::Result<()> {
                     let password = resolve_password(password, password_stdin, password_prompt)?;
                     let priv32 = wallet::keystore::decrypt(&ks.crypto, password.as_str())?;
                     let pk33 = wallet::hd::pubkey_from_privkey_secp256k1(&priv32)?;
-                    let address = wallet::address::from_pubkey(&pk33);
+                    // Use Base58Check for CLI output/import comparisons.
+                    let address = wallet::address::from_pubkey_b58check(&pk33);
+                    // If import requests b58check validation, check keystore.address matches derived payload
+                    if b58check {
+                        match crate::security::b58check_decode(&ks.address) {
+                            Ok((ver, payload)) => {
+                                if ver != crate::wallet::address::ADDRESS_VERSION {
+                                    anyhow::bail!("keystore address version mismatch: {}", ver);
+                                }
+                                use sha2::Digest;
+                                let h = sha2::Sha256::digest(pk33);
+                                if payload[..] != h[..20] {
+                                    anyhow::bail!("keystore address checksum/payload mismatch");
+                                }
+                            }
+                            Err(e) => {
+                                anyhow::bail!("keystore address is not valid Base58Check: {}", e);
+                            }
+                        }
+                    }
 
                     if full || cli.json {
                         // 打印更多校验信息，包含 keystore 中记录的公钥 hex 与当前计算的是否一致
@@ -559,7 +662,14 @@ fn main() -> anyhow::Result<()> {
                     }
                 }
 
-                KsCmd::Export { file, password, password_stdin, password_prompt, out_priv } => {
+                KsCmd::Export {
+                    file,
+                    password,
+                    password_stdin,
+                    password_prompt,
+                    out_priv,
+                    b58check: _,
+                } => {
                     // 加载 keystore 并校验版本
                     let raw = fs::read_to_string(&file)?;
                     let ks: wallet::keystore::Keystore = serde_json::from_str(&raw)?;
