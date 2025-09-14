@@ -86,8 +86,16 @@ jobs:
           $env:RUSTC_WRAPPER = "$env:USERPROFILE\.cargo\bin\sccache.exe"
           cargo build --manifest-path ./crates/ark-wallet-cli/Cargo.toml --release --target ${{ matrix.target }}
 
-      - name: Create dist directory
-        run: mkdir -p dist
+      - name: Create dist directory (Unix)
+        if: matrix.os != 'windows-latest'
+        run: |
+          mkdir -p dist
+
+      - name: Create dist directory (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path "$env:GITHUB_WORKSPACE\\dist" -Force | Out-Null
 
       - name: Package Windows artifact
         if: matrix.os == 'windows-latest'
