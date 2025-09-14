@@ -4,7 +4,7 @@
 //! - from_pubkey_b58check: version(1B)+hash20(20B)+checksum(4B double-Sha256) -> Base58。
 //!
 //! 地址派生与 Base58Check 辅助函数。
-use sha2::{ Digest, Sha256 };
+use sha2::{Digest, Sha256};
 
 /// Deprecated legacy helper: takes a compressed public key (33 bytes) and
 /// returns a plain Base58-encoded 20-byte hash. Not recommended for new code.
@@ -56,9 +56,8 @@ mod tests {
         pk[0] = 0x02;
         pk[32] = 0xab;
         let addr_b58c = from_pubkey_b58check(&pk);
-        let (ver, payload) = crate::security::codec
-            ::b58check_decode(&addr_b58c)
-            .expect("valid b58check");
+        let (ver, payload) =
+            crate::security::codec::b58check_decode(&addr_b58c).expect("valid b58check");
         assert_eq!(ver, ADDRESS_VERSION);
         assert_eq!(payload.len(), 20);
         let h = sha2::Sha256::digest(pk);
