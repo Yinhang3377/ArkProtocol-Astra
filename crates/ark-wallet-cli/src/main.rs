@@ -17,6 +17,7 @@
 use bip39::Language;
 use clap::{ ArgAction, Parser, Subcommand };
 use std::path::Path;
+use sha2::Digest;
 use zeroize::{ Zeroize, Zeroizing }; // <--- 新增
 
 // 引入内部模块
@@ -171,6 +172,9 @@ enum KsCmd {
         /// 若存在则覆盖
         #[arg(long, action = ArgAction::SetTrue)]
         overwrite: bool,
+        /// Use Base58Check (versioned+checksum) for address output and validation
+        #[arg(long, action = ArgAction::SetTrue)]
+        b58check: bool,
     },
 
     // Import：读取 keystore JSON，解密得到私钥，重新计算地址并按需输出
@@ -194,6 +198,9 @@ enum KsCmd {
         /// 输出完整信息（含公钥十六进制）
         #[arg(long, action = ArgAction::SetTrue)]
         full: bool,
+        /// Treat addresses as Base58Check and validate checksum/payload
+        #[arg(long, action = ArgAction::SetTrue)]
+        b58check: bool,
     },
 
     // Export：从 keystore 解密出私钥，打印 hex 或写入文件；--json 时输出结构化 JSON
@@ -217,6 +224,9 @@ enum KsCmd {
         /// 输出到文件（可选），默认打印 hex
         #[arg(long, num_args = 0..=1, default_missing_value = "privkey.hex")]
         out_priv: Option<String>,
+        /// Treat addresses as Base58Check for output
+        #[arg(long, action = ArgAction::SetTrue)]
+        b58check: bool,
     },
 }
 
@@ -312,15 +322,6 @@ fn resolve_password_create(
         }
     }
     Ok(pwd)
-}
-
-// 校验 KDF 是否受支持（当前仅 scrypt 与 pbkdf2）。
-// - 统一在解析命令后尽早校验，避免进入昂贵流程后才失败。
-fn validate_kdf(kdf: &str) -> anyhow::Result<()> {
-    match kdf {
-        "scrypt" | "pbkdf2" => Ok(()),
-        other => anyhow::bail!("invalid kdf: {other}. allowed: scrypt, pbkdf2"),
-    }
 }
 
 // 主流程：解析命令并执行相应分支。
@@ -433,6 +434,7 @@ fn main() -> anyhow::Result<()> {
                     password_confirm,
                     out,
                     overwrite,
+                    b58check,
                     .. // 保底：忽略未来新增字段
                 } => {
                     // 解析语言代码 -> bip39::Language
@@ -440,10 +442,10 @@ fn main() -> anyhow::Result<()> {
 
                     let kdf_kind = crate::security
                         ::validate_kdf_choice(&kdf)
-                        .map_err(anyhow::Error::msg)?;
+                        .map_err(|e| anyhow::anyhow!("kdf choice error: {}", e))?;
                     crate::security
                         ::validate_kdf_params(kdf_kind, iterations, n, r, p)
-                        .map_err(anyhow::Error::msg)?;
+                        .map_err(|e| anyhow::anyhow!("kdf params error: {}", e))?;
 
                     let passphrase = Zeroizing::new(passphrase.unwrap_or_default());
 
@@ -455,13 +457,19 @@ fn main() -> anyhow::Result<()> {
                         anyhow::bail!("either --mnemonic or --mnemonic-file is required")
                     };
 
-                    let (priv32, pk33, _) = wallet::hd::derive_priv_from_mnemonic(
-                        bip_lang, // <--- 改为解析后的 Language
-                        &mn_text,
-                        passphrase.as_str(),
-                        &path
-                    )?;
-                    let address = wallet::address::from_pubkey(&pk33);
+                    let (priv32, pk33, _) = wallet::hd
+                        ::derive_priv_from_mnemonic(
+                            bip_lang, // <--- 改为解析后的 Language
+                            &mn_text,
+                            passphrase.as_str(),
+                            &path
+                        )
+                        .map_err(|e| anyhow::anyhow!("hd derive error: {}", e))?;
+                    let address = if b58check {
+                        wallet::address::from_pubkey_b58check(&pk33)
+                    } else {
+                        wallet::address::from_pubkey(&pk33)
+                    };
                     // 助记词文本不再需要，尽早清理
                     mn_text.zeroize();
 
@@ -478,15 +486,9 @@ fn main() -> anyhow::Result<()> {
                     }
 
                     // 加密并构造 keystore JSON
-                    let (crypto, _nonce) = wallet::keystore::encrypt(
-                        &priv32,
-                        password.as_str(),
-                        &kdf,
-                        iterations,
-                        n,
-                        r,
-                        p
-                    )?;
+                    let (crypto, _nonce) = wallet::keystore
+                        ::encrypt(&priv32, password.as_str(), &kdf, iterations, n, r, p)
+                        .map_err(|e| anyhow::anyhow!("keystore encrypt error: {}", e))?;
                     let path_str = path.clone(); // JSON 输出中保留原始派生路径
                     let ks = wallet::keystore::Keystore {
                         version: wallet::keystore::VERSION,
@@ -502,7 +504,9 @@ fn main() -> anyhow::Result<()> {
                         anyhow::bail!("file exists: {out}. Use --overwrite to replace");
                     }
                     // 使用安全原子写入，返回规范化绝对路径
-                    let out_abs = crate::security::secure_atomic_write(p, json.as_bytes())?;
+                    let out_abs = crate::security
+                        ::secure_atomic_write(p, json.as_bytes())
+                        .map_err(|e| anyhow::anyhow!("io error writing keystore: {}", e))?;
                     if cli.json {
                         let out_json =
                             serde_json::json!({
@@ -522,7 +526,14 @@ fn main() -> anyhow::Result<()> {
                     }
                 }
 
-                KsCmd::Import { file, password, password_stdin, password_prompt, full } => {
+                KsCmd::Import {
+                    file,
+                    password,
+                    password_stdin,
+                    password_prompt,
+                    full,
+                    b58check,
+                } => {
                     // 读取并反序列化 keystore；版本不兼容直接拒绝
                     let raw = fs::read_to_string(&file)?;
                     let ks: wallet::keystore::Keystore = serde_json::from_str(&raw)?;
@@ -532,9 +543,27 @@ fn main() -> anyhow::Result<()> {
 
                     // 解密得到私钥 -> 还原公钥与地址
                     let password = resolve_password(password, password_stdin, password_prompt)?;
-                    let priv32 = wallet::keystore::decrypt(&ks.crypto, password.as_str())?;
+                    let priv32 = wallet::keystore
+                        ::decrypt(&ks.crypto, password.as_str())
+                        .map_err(|e| anyhow::anyhow!("keystore decrypt error: {}", e))?;
                     let pk33 = wallet::hd::pubkey_from_privkey_secp256k1(&priv32)?;
                     let address = wallet::address::from_pubkey(&pk33);
+                    // If import requests b58check validation, check keystore.address matches derived payload
+                    if b58check {
+                        match crate::security::b58check_decode(&ks.address) {
+                            Ok((ver, payload)) => {
+                                if ver != crate::wallet::address::ADDRESS_VERSION {
+                                    anyhow::bail!("keystore address version mismatch: {}", ver);
+                                }
+                                let h = sha2::Sha256::digest(&pk33);
+                                if payload[..] != h[..20] {
+                                    anyhow::bail!("keystore address checksum/payload mismatch");
+                                }
+                            }
+                            Err(e) =>
+                                anyhow::bail!("keystore address is not valid Base58Check: {}", e),
+                        }
+                    }
 
                     if full || cli.json {
                         // 打印更多校验信息，包含 keystore 中记录的公钥 hex 与当前计算的是否一致
@@ -559,7 +588,14 @@ fn main() -> anyhow::Result<()> {
                     }
                 }
 
-                KsCmd::Export { file, password, password_stdin, password_prompt, out_priv } => {
+                KsCmd::Export {
+                    file,
+                    password,
+                    password_stdin,
+                    password_prompt,
+                    out_priv,
+                    b58check: _,
+                } => {
                     // 加载 keystore 并校验版本
                     let raw = fs::read_to_string(&file)?;
                     let ks: wallet::keystore::Keystore = serde_json::from_str(&raw)?;
@@ -569,13 +605,17 @@ fn main() -> anyhow::Result<()> {
 
                     // 解密得到私钥并格式化为小写十六进制
                     let password = resolve_password(password, password_stdin, password_prompt)?;
-                    let priv32 = wallet::keystore::decrypt(&ks.crypto, password.as_str())?;
+                    let priv32 = wallet::keystore
+                        ::decrypt(&ks.crypto, password.as_str())
+                        .map_err(|e| anyhow::anyhow!("keystore decrypt error: {}", e))?;
                     let hex = wallet::keystore::hex_lower(&priv32);
 
                     if cli.json {
                         if let Some(outp) = out_priv {
                             // 写入文件，同时在 JSON 中返回规范化（绝对）路径与私钥 hex
-                            let abs = crate::security::secure_atomic_write(&outp, hex.as_bytes())?;
+                            let abs = crate::security
+                                ::secure_atomic_write(&outp, hex.as_bytes())
+                                .map_err(|e| anyhow::anyhow!("io error writing priv file: {}", e))?;
                             let out =
                                 serde_json::json!({ "privkey_hex": hex, "file": abs.to_string_lossy() });
                             println!("{}", serde_json::to_string_pretty(&out)?);
@@ -586,7 +626,9 @@ fn main() -> anyhow::Result<()> {
                         }
                     } else if let Some(outp) = out_priv {
                         // 非 JSON 模式：写入文件，并在 stdout 打印规范化路径（用于管道/测试消费）
-                        let abs = crate::security::secure_atomic_write(&outp, hex.as_bytes())?;
+                        let abs = crate::security
+                            ::secure_atomic_write(&outp, hex.as_bytes())
+                            .map_err(|e| anyhow::anyhow!("io error writing priv file: {}", e))?;
                         println!("{}", abs.display());
                     } else {
                         // 仅打印 hex 到 stdout

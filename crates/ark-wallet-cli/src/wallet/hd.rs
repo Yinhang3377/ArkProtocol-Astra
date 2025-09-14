@@ -5,9 +5,10 @@
 //! - 输出：32 字节私钥 + 压缩公钥（33 字节），以及调试/校验所需的派生信息
 //! - 安全：尽早 Zeroize 种子与私钥；仅在必要范围内持有敏感数据
 
-use anyhow::Result;
-use bip32::{DerivationPath, XPrv};
-use bip39::{Language, Mnemonic};
+use crate::security::errors::SecurityError;
+use std::result::Result as StdResult;
+use bip32::{ DerivationPath, XPrv };
+use bip39::{ Language, Mnemonic };
 use k256::ecdsa::SigningKey;
 
 /// 从助记词派生私钥与公钥（示例）
@@ -22,12 +23,18 @@ pub fn derive_priv_from_mnemonic(
     lang: Language,
     mnemonic_text: &str,
     passphrase: &str,
-    path: &str,
-) -> Result<([u8; 32], [u8; 33], String)> {
-    let m = Mnemonic::parse_in(lang, mnemonic_text)?;
+    path: &str
+) -> StdResult<([u8; 32], [u8; 33], String), SecurityError> {
+    let m = Mnemonic::parse_in(lang, mnemonic_text).map_err(|e|
+        SecurityError::Parse(format!("bip39 parse error: {}", e))
+    )?;
     let seed = m.to_seed(passphrase);
-    let dp: DerivationPath = path.parse()?;
-    let xprv = XPrv::derive_from_path(seed, &dp)?;
+    let dp: DerivationPath = path
+        .parse()
+        .map_err(|e| SecurityError::Parse(format!("derivation path parse error: {}", e)))?;
+    let xprv = XPrv::derive_from_path(seed, &dp).map_err(|e|
+        SecurityError::Parse(format!("xprv derive error: {}", e))
+    )?;
 
     // private_key().to_bytes() -> GenericArray -> 拷贝到 [u8;32]
     let fb = xprv.private_key().to_bytes();
@@ -44,9 +51,11 @@ pub fn derive_priv_from_mnemonic(
 
 /// 由 32 字节私钥计算压缩公钥（33 字节）。
 /// - 用于 keystore 解密后还原地址、公钥等
-pub fn pubkey_from_privkey_secp256k1(priv32: &[u8; 32]) -> anyhow::Result<[u8; 33]> {
+pub fn pubkey_from_privkey_secp256k1(priv32: &[u8; 32]) -> StdResult<[u8; 33], SecurityError> {
     // SigningKey::from_bytes 需要 FieldBytes 引用（priv32.into()）
-    let sk = SigningKey::from_bytes(priv32.into())?;
+    let sk = SigningKey::from_bytes(priv32.into()).map_err(|e|
+        SecurityError::Crypto(format!("k256 error: {}", e))
+    )?;
     let vk = sk.verifying_key();
     let ep = vk.to_encoded_point(true);
     let bytes = ep.as_bytes();
@@ -65,8 +74,12 @@ mod tests {
         let mn =
             "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
         let path = "m/44'/7777'/0'/0/0";
-        let (priv32, pk33, _m) =
-            derive_priv_from_mnemonic(Language::English, mn, "", path).unwrap();
+        let (priv32, pk33, _m) = derive_priv_from_mnemonic(
+            Language::English,
+            mn,
+            "",
+            path
+        ).unwrap();
 
         let pk_from_priv = pubkey_from_privkey_secp256k1(&priv32).unwrap();
         assert_eq!(pk33, pk_from_priv);
