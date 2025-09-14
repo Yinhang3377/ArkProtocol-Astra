@@ -41,13 +41,43 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
+            # workspace-local sccache directory (cross-platform)
+            ${{ github.workspace }}/.sccache
           # include OS and toolchain in key to avoid collisions across runners
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}-${{ matrix.target }}
           restore-keys: |
             ${{ runner.os }}-cargo-
 
-      - name: Build release
-        run: cargo build --manifest-path ./crates/ark-wallet-cli/Cargo.toml --release --target ${{ matrix.target }}
+      - name: Create local sccache dir
+        run: |
+          mkdir -p ${{ github.workspace }}/.sccache
+
+      - name: Install sccache (Linux / macOS)
+        if: matrix.os != 'windows-latest'
+        run: |
+          cargo install --locked sccache || true
+
+      - name: Install sccache (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          cargo install --locked sccache || true
+
+      - name: Build release (Linux/macOS)
+        if: matrix.os != 'windows-latest'
+        run: |
+          export SCCACHE_DIR=${{ github.workspace }}/.sccache
+          export RUSTC_WRAPPER=$HOME/.cargo/bin/sccache
+          cargo build --manifest-path ./crates/ark-wallet-cli/Cargo.toml --release --target ${{ matrix.target }}
+
+      - name: Build release (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path "$env:GITHUB_WORKSPACE\.sccache" -Force | Out-Null
+          $env:SCCACHE_DIR = "$env:GITHUB_WORKSPACE\.sccache"
+          $env:RUSTC_WRAPPER = "$env:USERPROFILE\.cargo\bin\sccache.exe"
+          cargo build --manifest-path ./crates/ark-wallet-cli/Cargo.toml --release --target ${{ matrix.target }}
 
       - name: Create dist directory
         run: mkdir -p dist
