@@ -49,7 +49,8 @@ jobs:
             ${{ runner.os }}-cargo-
 
       - name: Create local sccache dir (Unix)
-        if: matrix.os != 'windows-latest'
+        if: runner.os != 'Windows'
+        shell: bash
         run: |
           mkdir -p ${{ github.workspace }}/.sccache
 
@@ -60,7 +61,8 @@ jobs:
           New-Item -ItemType Directory -Path "$env:GITHUB_WORKSPACE\.sccache" -Force | Out-Null
 
       - name: Install sccache (Linux / macOS)
-        if: matrix.os != 'windows-latest'
+        if: runner.os != 'Windows'
+        shell: bash
         run: |
           cargo install --locked sccache || true
 
@@ -71,7 +73,8 @@ jobs:
           cargo install --locked sccache || true
 
       - name: Build release (Linux/macOS)
-        if: matrix.os != 'windows-latest'
+        if: runner.os != 'Windows'
+        shell: bash
         run: |
           export SCCACHE_DIR=${{ github.workspace }}/.sccache
           # Enable RUSTC_WRAPPER only if sccache is present (runner may not have it)
@@ -84,7 +87,7 @@ jobs:
           cargo build --manifest-path ./crates/ark-wallet-cli/Cargo.toml --release --target ${{ matrix.target }}
 
       - name: Build release (Windows)
-        if: matrix.os == 'windows-latest'
+        if: runner.os == 'Windows'
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Path "$env:GITHUB_WORKSPACE\.sccache" -Force | Out-Null
@@ -100,12 +103,13 @@ jobs:
           cargo build --manifest-path ./crates/ark-wallet-cli/Cargo.toml --release --target ${{ matrix.target }}
 
       - name: Create dist directory (Unix)
-        if: matrix.os != 'windows-latest'
+        if: runner.os != 'Windows'
+        shell: bash
         run: |
           mkdir -p dist
 
       - name: Create dist directory (Windows)
-        if: matrix.os == 'windows-latest'
+        if: runner.os == 'Windows'
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Path "$env:GITHUB_WORKSPACE\\dist" -Force | Out-Null
