@@ -5,7 +5,7 @@
 //!
 //! 本文件仅包含纯函数与单元测试，不包含 CLI JSON 代码。
 
-use sha2::{ Digest, Sha256 };
+use sha2::{Digest, Sha256};
 
 /// 简单 Base58 地址（无版本/校验和）
 ///
