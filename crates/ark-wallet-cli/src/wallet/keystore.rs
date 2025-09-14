@@ -16,6 +16,8 @@ use aes_gcm::{
 };
 use base64::{engine::general_purpose::STANDARD as B64, Engine as _};
 use pbkdf2::pbkdf2_hmac;
+use rand::rngs::OsRng;
+use rand::RngCore;
 use scrypt as scrypt_crate;
 use scrypt_crate::Params as ScryptParams;
 use sha2::Sha256;
@@ -89,10 +91,11 @@ pub fn encrypt(
 ) -> StdResult<(Crypto, [u8; 12]), SecurityError> {
     let mut salt = [0u8; 16];
     let mut nonce = [0u8; 12];
-    getrandom::getrandom(&mut salt)
-        .map_err(|e| SecurityError::Rand(format!("getrandom error: {}", e)))?;
-    getrandom::getrandom(&mut nonce)
-        .map_err(|e| SecurityError::Rand(format!("getrandom error: {}", e)))?;
+    {
+        let mut rng = OsRng;
+        rng.fill_bytes(&mut salt);
+        rng.fill_bytes(&mut nonce);
+    }
 
     let kdfparams = if kdf == "pbkdf2" {
         KdfParams {

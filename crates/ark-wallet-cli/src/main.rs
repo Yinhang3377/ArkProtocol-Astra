@@ -415,9 +415,11 @@ fn run() -> anyhow::Result<()> {
             };
             // 生成随机熵并构造助记词；生产环境建议使用系统强随机
             let mut buf = [0u8; 32];
-            getrandom::getrandom(&mut buf).map_err(|e| {
-                crate::security::errors::SecurityError::Rand(format!("getrandom failed: {}", e))
-            })?;
+            {
+                use rand::RngCore;
+                let mut rng = rand::rngs::OsRng;
+                rng.fill_bytes(&mut buf);
+            }
             let m = Mnemonic::from_entropy_in(lang, &buf[..entropy_bytes])?;
             // 由助记词 + 可选 passphrase 生成种子（用于后续 BIP32 派生）
             let mut seed = m.to_seed(passphrase.as_deref().unwrap_or(""));
