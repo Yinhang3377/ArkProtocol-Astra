@@ -15,6 +15,7 @@ This release publishes the wallet snapshot including CLI, keystore, and security
   - Replaced direct `getrandom` calls with `rand::rngs::OsRng` for compatibility.
   - Comprehensive unit and integration tests for wallet functionality.
   - CI format/lint fixes applied and workflow validated across platforms.
+  - Dependency updates: bumped `console` from 0.15.11 to 0.16.0 (Dependabot PR #2), CI verified and merged into `main`.
 
 ## Basic usage examples
 
