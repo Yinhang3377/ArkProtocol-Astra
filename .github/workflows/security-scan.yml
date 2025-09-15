@@ -84,39 +84,39 @@ jobs:
           profile: minimal
           toolchain: stable
           default: true
-      - name: Install cargo-geiger
+      - name: Install cargo-geiger and verify
         run: |
-          # Install latest cargo-geiger (don't pin to a specific version that may not exist)
           set -e
-          cargo install cargo-geiger || echo "cargo-geiger install failed; continuing and creating a placeholder if missing"
-          if ! cargo --list | grep -q geiger; then
-            echo "cargo-geiger binary not found after install"
+          # Install latest cargo-geiger (avoid hard pin which previously pointed to non-existent version)
+          cargo install cargo-geiger || true
+          # Print version or note absence for easier debugging in logs
+          if cargo --list | grep -q geiger; then
+            echo "cargo-geiger available:"; cargo geiger --version || true
           else
-            echo "cargo-geiger installed"
+            echo "cargo-geiger NOT available after install"
           fi
       - name: Run full cargo-geiger JSON scan
         run: |
           mkdir -p target/geiger
           # Run cargo-geiger for each non-virtual package manifest and collect per-package JSON outputs.
           set -e
-          # Find all Cargo.toml files tracked by git, excluding the workspace top-level Cargo.toml if it is virtual
-          manifests=$(git ls-files "**/Cargo.toml" | sed 's#\\\\#/#g' || true)
-          # Filter out the root workspace Cargo.toml if present
-          manifests_filtered=""
-          for m in $manifests; do
-            if [ "$m" = "Cargo.toml" ]; then
-              # skip top-level virtual manifest
+          # Get list of package manifests tracked by git (POSIX paths)
+          mapfile -t manifests < <(git ls-files -- "**/Cargo.toml" 2>/dev/null || true)
+          manifests_filtered=()
+          for m in "${manifests[@]}"; do
+            # normalize and skip top-level Cargo.toml (workspace)
+            if [ "$(basename "$m")" = "Cargo.toml" ] && [ "$(dirname "$m")" = "." ]; then
               continue
             fi
-            manifests_filtered="$manifests_filtered $m"
+            manifests_filtered+=("$m")
           done
-          if [ -z "$manifests_filtered" ]; then
+          if [ ${#manifests_filtered[@]} -eq 0 ]; then
             echo "No per-package manifests found; falling back to workspace Cargo.toml"
-            manifests_filtered="Cargo.toml"
+            manifests_filtered+=("Cargo.toml")
           fi
 
           any_generated=0
-          for m in $manifests_filtered; do
+          for m in "${manifests_filtered[@]}"; do
             pkgdir=$(dirname "$m")
             # sanitize package dir name for filenames
             sanitized=$(echo "$pkgdir" | sed 's#/#_##g' | sed 's#^\._##')
