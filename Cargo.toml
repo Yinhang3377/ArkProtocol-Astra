@@ -29,6 +29,10 @@ getrandom = { version = "0.3", features = ["std"] }
 sha2 = "0.10"
 toml = "0.8"
 aes-gcm = { version = "0.10", features = ["aes"] }
+generic-array = "0.14.7"
+memchr = "2.7.5"
+aes = "0.8.4"
+windows-sys = "0.60.2"
 pbkdf2 = "0.12"
 scrypt = "0.11"
 base64 = "0.22"
