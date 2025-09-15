@@ -44,14 +44,45 @@ jobs:
       - name: Install cargo-geiger
         run: |
           cargo install cargo-geiger --version 0.27.0 || true
-      - name: Run cargo-geiger for ark-wallet-cli (fast, forbid-only)
+      - name: Run cargo-geiger (conservative quick check)
         run: |
-          # Use forbid-only mode to quickly check for `#![forbid(unsafe_code)]` usage in entry sources
-          # This avoids parsing all registry dependency sources (which can produce parse warnings/errors)
           cargo geiger --manifest-path crates/ark-wallet-cli/Cargo.toml --forbid-only --output geiger-ark-wallet-cli.txt || true
-      - name: Upload geiger report
+      - name: Upload quick geiger report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: geiger-report
+          name: geiger-quick-report
           path: ./geiger-ark-wallet-cli.txt
+
+  geiger-full:
+    name: cargo-geiger-full
+    runs-on: ubuntu-latest
+    needs: geiger
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain-action@stable
+      - name: Install cargo-geiger
+        run: |
+          cargo install cargo-geiger --version 0.27.0 || true
+      - name: Run full cargo-geiger JSON scan
+        run: |
+          mkdir -p target/geiger
+          # Run a full JSON output of cargo-geiger for the workspace
+          cargo geiger --all-targets --format json > target/geiger/geiger-full.json || true
+          # Also save a pretty-printed version for humans (optional)
+          cargo geiger --all-targets > target/geiger/geiger-human.txt || true
+      - name: Run extractor and produce concise report
+        run: |
+          python3 scripts/extract_geiger_cli.py || true
+      - name: Upload geiger full artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: geiger-full-artifacts
+          path: |
+            target/geiger/geiger-full.json
+            target/geiger/extract_cli.txt
+            target/geiger/geiger-human.txt
