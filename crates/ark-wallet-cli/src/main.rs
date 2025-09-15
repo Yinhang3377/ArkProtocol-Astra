@@ -470,7 +470,7 @@ fn run() -> anyhow::Result<()> {
             // 解析 BIP32 路径并派生扩展私钥；随后得到公钥与演示用地址
             let dp: DerivationPath = path.parse()?;
 
-            let xprv = XPrv::derive_from_path(&seed, &dp)?;
+            let xprv = XPrv::derive_from_path(seed, &dp)?;
             let pk = xprv.public_key().to_bytes();
             // 这里用 Sha256 的前 20 字节做“演示地址”，实际项目可替换为正式地址规则
             let addr_hash = Sha256::digest(pk);
