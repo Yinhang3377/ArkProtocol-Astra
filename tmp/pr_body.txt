@@ -1,4 +1,37 @@
-﻿草稿：Geiger 安全审计报告
+﻿Draft: Security audit - cargo-audit + cargo-geiger artifacts
+
+Summary
+- Added CI scan (cargo-audit + cargo-geiger) and collected artifacts.
+- Attached artifacts: target/audit/audit.json (cargo-audit), target/geiger/geiger-full.json, target/geiger/extract_manual.txt
+
+High-level findings
+- cargo-audit: no advisories found in the captured audit.json
+- cargo-geiger (selected crates): getrandom shows used unsafe (max 36 unsafe exprs across versions). signal-hook-registry, secp256k1, backtrace, bytes, smallvec were not present in local geiger-full.json for this run (MISSING) — fetch full CI artifact or re-run geiger on CI if needed.
+
+Per-crate preliminary recommendations
+- getrandom (0.2.16,0.3.3): FOUND used unsafe count=36
+  - Action: review upstream changelogs/releases for safety-related fixes; prefer versions that reduce unsafe usage where feasible. Audit call sites in dependency graph that require getrandom; if unacceptable, consider pinning to a reviewed commit or vendor minimal RNG surface.
+
+- signal-hook-registry: MISSING in this artifact
+  - Action: fetch CI artifact / re-run geiger; if used, ensure signal handling safety is audited and consider replacing with safer alternatives if needed.
+
+- secp256k1 / backtrace / bytes / smallvec: MISSING
+  - Action: fetch full CI artifacts and triage similarly.
+
+Next steps
+1) Attach these artifacts to this draft PR for reviewer inspection.
+2) Run cargo-geiger across CI with --json to capture all crates and re-run extraction.
+3) Triage top unsafe-usage crates, propose conservative mitigations (pin/patch/remove) and open follow-up PRs with minimal changes.
+
+Files included in branch:
+- .github/workflows/security-scan.yml (CI scan)
+- scripts/parse_geiger_manual.py, scripts/run_parse_geiger.ps1 (helpers)
+- target/geiger/geiger-full.json (CI artifact)
+- target/geiger/extract_manual.txt (extracted summary)
+- target/audit/audit.json (cargo-audit output)
+
+Please review and suggest any additional crates to triage or conservative fixes to apply.
+草稿：Geiger 安全审计报告
 
 此 PR 包含：
 - `.github/PULL_REQUEST_TEMPLATE/security_audit_geiger.md`（审计模板，包含 top-10 节选及建议）
