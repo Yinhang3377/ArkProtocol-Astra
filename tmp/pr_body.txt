@@ -1,0 +1,12 @@
+﻿草稿：Geiger 安全审计报告
+
+此 PR 包含：
+- `.github/PULL_REQUEST_TEMPLATE/security_audit_geiger.md`（审计模板，包含 top-10 节选及建议）
+- `tmp_logs/geiger_top30_aggregated.csv`（聚合的 top-30 unsafe 计数 CSV）
+- `tmp_logs/geiger_ark_wallet_cli.txt`（完整 geiger 运行日志，供详查）
+
+请审阅：
+- 重点关注 top-3 依赖（sha2、bitcoin_hashes、zerocopy）的审计建议并留言是否需要深入审查或替换依赖。
+- 我可以随后将 `cargo audit` 与 `cargo geiger` 加入 CI（草稿 PR 可包含工作流文件）。
+
+若需要我也可以将此 PR 标为 Draft（当前已尝试自动创建）。
