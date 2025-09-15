@@ -82,10 +82,28 @@ jobs:
       - name: Run full cargo-geiger JSON scan
         run: |
           mkdir -p target/geiger
-          # Run a full JSON output of cargo-geiger for the workspace
-          cargo geiger --all-targets --format json > target/geiger/geiger-full.json || true
-          # Also save a pretty-printed version for humans (optional)
-          cargo geiger --all-targets > target/geiger/geiger-human.txt || true
+          # Run a full JSON output of cargo-geiger for the workspace.
+          # Retry up to 3 times if the generated JSON is empty (some runners may produce empty output intermittently).
+          set -e
+          attempts=0
+          max_attempts=3
+          while [ $attempts -lt $max_attempts ]; do
+            attempts=$((attempts+1))
+            echo "Running cargo-geiger (attempt $attempts/$max_attempts)"
+            cargo geiger --all-targets --format json > target/geiger/geiger-full.json || true
+            # Also save a human-readable version
+            cargo geiger --all-targets > target/geiger/geiger-human.txt || true
+            if [ -s target/geiger/geiger-full.json ]; then
+              echo "geiger JSON generated and non-empty"
+              break
+            fi
+            echo "geiger-full.json is empty (attempt $attempts). Retrying in 3s..."
+            sleep 3
+          done
+          if [ ! -s target/geiger/geiger-full.json ]; then
+            echo "Warning: geiger-full.json is missing or empty after $max_attempts attempts"
+            # Leave the possibly-empty file in place so the artifact step can still run and we can inspect logs.
+          fi
       - name: Run extractor and produce concise report
         run: |
           python3 scripts/extract_geiger_cli.py || true
@@ -95,6 +113,4 @@ jobs:
         with:
           name: geiger-full-artifacts
           path: |
-            target/geiger/geiger-full.json
-            target/geiger/extract_cli.txt
-            target/geiger/geiger-human.txt
+            target/geiger/**
