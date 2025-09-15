@@ -101,12 +101,21 @@ jobs:
             sleep 3
           done
           if [ ! -s target/geiger/geiger-full.json ]; then
-            echo "Warning: geiger-full.json is missing or empty after $max_attempts attempts"
-            # Leave the possibly-empty file in place so the artifact step can still run and we can inspect logs.
+            # Some cargo-geiger versions emit a top-level `geiger.json` rather than the target path.
+            if [ -s geiger.json ]; then
+              echo "Found top-level geiger.json from this geiger version; copying to target/geiger/geiger-full.json"
+              cp geiger.json target/geiger/geiger-full.json
+            else
+              echo "Warning: geiger-full.json is missing or empty after $max_attempts attempts"
+            fi
           fi
       - name: Run extractor and produce concise report
         run: |
+          # extractor should write target/geiger/extract_cli.txt; tolerate failures but attempt to create a placeholder
           python3 scripts/extract_geiger_cli.py || true
+          if [ ! -s target/geiger/extract_cli.txt ] && [ -s target/geiger/geiger-full.json ]; then
+            echo "No extract_cli.txt produced; creating a minimal placeholder referencing geiger-full.json" > target/geiger/extract_cli.txt
+          fi
       - name: Upload geiger full artifacts
         if: always()
         uses: actions/upload-artifact@v4
