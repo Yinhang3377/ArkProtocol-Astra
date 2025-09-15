@@ -40,12 +40,13 @@ jobs:
       - name: Install cargo-geiger
         run: |
           cargo install cargo-geiger --version 0.27.0 || true
-      - name: Run cargo-geiger
+      - name: Run cargo-geiger for ark-wallet-cli
         run: |
-          cargo geiger --output geiger-report || true
+          # Run geiger against the wallet crate manifest to avoid running against the virtual workspace manifest
+          cargo geiger --manifest-path crates/ark-wallet-cli/Cargo.toml --all-targets --bins --examples --tests --benches --output geiger-ark-wallet-cli.txt || true
       - name: Upload geiger report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: geiger-report
-          path: ./geiger-report
+          path: ./geiger-ark-wallet-cli.txt
