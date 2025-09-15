@@ -38,3 +38,39 @@ sha2 0.10.9: unsafe exprs 1424
 
 Note: the specific requested crates (`getrandom`, `signal-hook-registry`, `secp256k1`, `backtrace`, `bytes`, `smallvec`) were not present in the top rows of the local aggregate output — they may be absent from this local geiger run, or cargo-geiger on CI will produce a fuller view. See `tmp_logs/geiger_top30_aggregated.csv` for the full list.
 
+Prioritized top-15 unsafe crates (from local geiger run)
+-------------------------------------------------------
+The local aggregate shows these high-unsafe crates (unsafe expressions used):
+
+1. generic-array 0.14.7 — 1995
+2. memchr 2.7.5 — 1973
+3. sha2 0.10.9 — 1424
+4. aes 0.8.4 — 765
+5. windows-sys 0.60.2 — 708
+6. ppv-lite86 0.2.21 — 632
+7. ryu 1.0.20 — 572
+8. anyhow 1.0.99 — 464
+9. bitcoin_hashes 0.13.0 — 409
+10. zerocopy 0.8.27 — 403
+11. console 0.16.0 — 380
+12. encode_unicode 1.0.0 — 223
+13. inout 0.1.4 — 126
+
+Immediate conservative remediations (per-crate)
+----------------------------------------------
+- For crypto or native-FFI heavy crates (sha2, aes, bitcoin_hashes, zerocopy):
+	- Pin to the highest vetted version publish that is compatible with our MSRV and has clear changelogs.
+	- Add a short audit note in PR explaining the unsafe surface is upstream and limited to low-level primitives.
+
+- For platform or sys crates (windows-sys):
+	- Keep pinned to known good versions, document why the unsafe usage is required (FFI to Windows APIs).
+
+- For high-unsafe utility crates (generic-array, memchr, ryu):
+	- These are mature and widely used; prefer documenting and pinning rather than large rewrites. If desired, open follow-up PRs to vendor or replace only if a security advisory is found.
+
+Next actions to finalize this draft PR
+-------------------------------------
+1. Attach available artifacts (local `target/geiger/geiger-full.json` and `tmp_logs/geiger_top30_aggregated.csv`) to the PR description.
+2. If CI produces non-empty geiger artifacts on subsequent runs, parse them and update the top-15 list to reflect CI reality.
+3. Open follow-up PRs for specific crates if we find recent advisories or unsafe usage in call-sites that touch security-sensitive code paths.
+
