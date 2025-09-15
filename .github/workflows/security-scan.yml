@@ -14,7 +14,9 @@ jobs:
         with:
           fetch-depth: 0
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain-action@stable
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
       - name: Install cargo-audit
         run: |
           # Use a recent cargo-audit release
@@ -40,7 +42,9 @@ jobs:
         with:
           fetch-depth: 0
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain-action@stable
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
       - name: Install cargo-geiger
         run: |
           cargo install cargo-geiger --version 0.27.0 || true
@@ -63,7 +67,9 @@ jobs:
         with:
           fetch-depth: 0
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain-action@stable
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
       - name: Install cargo-geiger
         run: |
           cargo install cargo-geiger --version 0.27.0 || true
