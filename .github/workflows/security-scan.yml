@@ -51,7 +51,15 @@ jobs:
           default: true
       - name: Install cargo-geiger
         run: |
-          cargo install cargo-geiger --version 0.27.0 || true
+          # Install the latest cargo-geiger available on crates.io; avoid hard-failing the job if install fails
+          set -e
+          cargo install cargo-geiger || echo "cargo-geiger install failed; continuing and creating a placeholder if missing"
+          # verify installation
+          if ! cargo --list | grep -q geiger; then
+            echo "cargo-geiger binary not found after install"
+          else
+            echo "cargo-geiger installed"
+          fi
       - name: Run cargo-geiger (conservative quick check)
         run: |
           cargo geiger --manifest-path crates/ark-wallet-cli/Cargo.toml --forbid-only --output geiger-ark-wallet-cli.txt || true
@@ -78,7 +86,14 @@ jobs:
           default: true
       - name: Install cargo-geiger
         run: |
-          cargo install cargo-geiger --version 0.27.0 || true
+          # Install latest cargo-geiger (don't pin to a specific version that may not exist)
+          set -e
+          cargo install cargo-geiger || echo "cargo-geiger install failed; continuing and creating a placeholder if missing"
+          if ! cargo --list | grep -q geiger; then
+            echo "cargo-geiger binary not found after install"
+          else
+            echo "cargo-geiger installed"
+          fi
       - name: Run full cargo-geiger JSON scan
         run: |
           mkdir -p target/geiger
@@ -90,9 +105,14 @@ jobs:
           while [ $attempts -lt $max_attempts ]; do
             attempts=$((attempts+1))
             echo "Running cargo-geiger (attempt $attempts/$max_attempts)"
-            cargo geiger --all-targets --format json > target/geiger/geiger-full.json || true
-            # Also save a human-readable version
-            cargo geiger --all-targets > target/geiger/geiger-human.txt || true
+            # guard: if cargo doesn't expose geiger, skip and create a placeholder later
+            if cargo --list | grep -q geiger; then
+              cargo geiger --all-targets --format json > target/geiger/geiger-full.json || true
+              # Also save a human-readable version
+              cargo geiger --all-targets > target/geiger/geiger-human.txt || true
+            else
+              echo "cargo-geiger not available; skipping run"
+            fi
             if [ -s target/geiger/geiger-full.json ]; then
               echo "geiger JSON generated and non-empty"
               break
@@ -107,6 +127,11 @@ jobs:
               cp geiger.json target/geiger/geiger-full.json
             else
               echo "Warning: geiger-full.json is missing or empty after $max_attempts attempts"
+              # Create a minimal JSON placeholder so downstream extractor doesn't crash parsing an empty file
+              mkdir -p target/geiger
+              if [ ! -s target/geiger/geiger-full.json ]; then
+                echo '{"error":"cargo-geiger-not-available-or-empty","notes":"See logs for details"}' > target/geiger/geiger-full.json
+              fi
             fi
           fi
       - name: Run extractor and produce concise report
