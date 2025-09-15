@@ -43,3 +43,23 @@ Please review and suggest any additional crates to triage or conservative fixes 
 - 我可以随后将 `cargo audit` 与 `cargo geiger` 加入 CI（草稿 PR 可包含工作流文件）。
 
 若需要我也可以将此 PR 标为 Draft（当前已尝试自动创建）。
+
+---
+
+Automated triage (from target/geiger/extract_manual.txt)
+
+- getrandom (0.2.16, 0.3.3): FOUND used unsafe count=36
+  - Impact: moderate — RNG crates often contain unsafe low-level platform code. We should inspect call sites and ensure only well-reviewed APIs are used.
+  - Suggestion: prefer newer getrandom releases if they reduce unsafe usage; audit dependent crates that expose RNG to security-sensitive code paths. Consider pinning to a specific vetted version or introducing a safe wrapper with limited surface.
+
+- signal-hook-registry: MISSING from this geiger run
+  - Action: re-run geiger (CI) or fetch a non-empty geiger-full.json from CI to confirm presence and versions; then triage unsafe usage.
+
+- secp256k1, backtrace, bytes, smallvec: MISSING
+  - Action: same as above — obtain full CI geiger JSON and re-run the extractor. If present, prioritize secp256k1 for manual review (crypto code) and smallvec/bytes for memory-safety usage patterns.
+
+Next actions (automated):
+1. Re-run CI security-scan until geiger-full.json is non-empty across runners or run geiger locally in CI runner context.
+2. When a full geiger JSON is available, parse and attach top-30 unsafe-usage CSV and a short remediation plan per crate.
+3. For any high-risk crates (crypto or native bindings) prepare follow-up PRs with conservative mitigations (pin, patch, replace) and tests.
+
