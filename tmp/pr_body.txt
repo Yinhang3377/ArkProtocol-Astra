@@ -28,3 +28,13 @@ Next steps
 
 -- end of draft
 
+CSV excerpt (selected crates)
+----------------------------
+I generated `tmp_logs/geiger_top30_aggregated.csv`. Excerpt of high-unsafe crates found locally:
+
+generic-array 0.14.7: unsafe exprs 1995
+memchr 2.7.5: unsafe exprs 1973
+sha2 0.10.9: unsafe exprs 1424
+
+Note: the specific requested crates (`getrandom`, `signal-hook-registry`, `secp256k1`, `backtrace`, `bytes`, `smallvec`) were not present in the top rows of the local aggregate output — they may be absent from this local geiger run, or cargo-geiger on CI will produce a fuller view. See `tmp_logs/geiger_top30_aggregated.csv` for the full list.
+
