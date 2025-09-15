@@ -17,10 +17,14 @@ jobs:
         uses: dtolnay/rust-toolchain-action@stable
       - name: Install cargo-audit
         run: |
-          cargo install cargo-audit --version 0.18.0 || true
-      - name: Run cargo audit
+          # Use a recent cargo-audit release
+          cargo install cargo-audit --version 0.21.2 || true
+      - name: Run cargo audit and save JSON
         run: |
-          cargo audit --deny warnings || true
+          mkdir -p target/audit
+          # Save machine-readable JSON for artifact upload and keep human output in the log
+          cargo audit --json > target/audit/audit.json || true
+          cargo audit || true
       - name: Upload cargo-audit result
         if: always()
         uses: actions/upload-artifact@v4
@@ -40,10 +44,11 @@ jobs:
       - name: Install cargo-geiger
         run: |
           cargo install cargo-geiger --version 0.27.0 || true
-      - name: Run cargo-geiger for ark-wallet-cli
+      - name: Run cargo-geiger for ark-wallet-cli (fast, forbid-only)
         run: |
-          # Run geiger against the wallet crate manifest to avoid running against the virtual workspace manifest
-          cargo geiger --manifest-path crates/ark-wallet-cli/Cargo.toml --all-targets --bins --examples --tests --benches --output geiger-ark-wallet-cli.txt || true
+          # Use forbid-only mode to quickly check for `#![forbid(unsafe_code)]` usage in entry sources
+          # This avoids parsing all registry dependency sources (which can produce parse warnings/errors)
+          cargo geiger --manifest-path crates/ark-wallet-cli/Cargo.toml --forbid-only --output geiger-ark-wallet-cli.txt || true
       - name: Upload geiger report
         if: always()
         uses: actions/upload-artifact@v4
