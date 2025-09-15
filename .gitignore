@@ -13,3 +13,6 @@ pwd.txt
 *.key
 .env
 *.log
+# CI job logs and tmp artifacts
+tmp/
+
