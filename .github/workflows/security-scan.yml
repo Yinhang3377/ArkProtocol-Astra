@@ -1,0 +1,51 @@
+name: Security scan (cargo-audit + geiger)
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+
+jobs:
+  audit:
+    name: cargo-audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain-action@stable
+      - name: Install cargo-audit
+        run: |
+          cargo install cargo-audit --version 0.18.0 || true
+      - name: Run cargo audit
+        run: |
+          cargo audit --deny warnings || true
+      - name: Upload cargo-audit result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cargo-audit-report
+          path: ./target/audit
+
+  geiger:
+    name: cargo-geiger
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain-action@stable
+      - name: Install cargo-geiger
+        run: |
+          cargo install cargo-geiger --version 0.27.0 || true
+      - name: Run cargo-geiger
+        run: |
+          cargo geiger --output geiger-report || true
+      - name: Upload geiger report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: geiger-report
+          path: ./geiger-report
