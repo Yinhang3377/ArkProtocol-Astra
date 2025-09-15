@@ -97,42 +97,62 @@ jobs:
       - name: Run full cargo-geiger JSON scan
         run: |
           mkdir -p target/geiger
-          # Run a full JSON output of cargo-geiger for the workspace.
-          # Retry up to 3 times if the generated JSON is empty (some runners may produce empty output intermittently).
+          # Run cargo-geiger for each non-virtual package manifest and collect per-package JSON outputs.
           set -e
-          attempts=0
-          max_attempts=3
-          while [ $attempts -lt $max_attempts ]; do
-            attempts=$((attempts+1))
-            echo "Running cargo-geiger (attempt $attempts/$max_attempts)"
-            # guard: if cargo doesn't expose geiger, skip and create a placeholder later
-            if cargo --list | grep -q geiger; then
-              cargo geiger --all-targets --format json > target/geiger/geiger-full.json || true
-              # Also save a human-readable version
-              cargo geiger --all-targets > target/geiger/geiger-human.txt || true
-            else
-              echo "cargo-geiger not available; skipping run"
+          # Find all Cargo.toml files tracked by git, excluding the workspace top-level Cargo.toml if it is virtual
+          manifests=$(git ls-files "**/Cargo.toml" | sed 's#\\\\#/#g' || true)
+          # Filter out the root workspace Cargo.toml if present
+          manifests_filtered=""
+          for m in $manifests; do
+            if [ "$m" = "Cargo.toml" ]; then
+              # skip top-level virtual manifest
+              continue
             fi
-            if [ -s target/geiger/geiger-full.json ]; then
-              echo "geiger JSON generated and non-empty"
-              break
-            fi
-            echo "geiger-full.json is empty (attempt $attempts). Retrying in 3s..."
-            sleep 3
+            manifests_filtered="$manifests_filtered $m"
           done
-          if [ ! -s target/geiger/geiger-full.json ]; then
-            # Some cargo-geiger versions emit a top-level `geiger.json` rather than the target path.
-            if [ -s geiger.json ]; then
-              echo "Found top-level geiger.json from this geiger version; copying to target/geiger/geiger-full.json"
-              cp geiger.json target/geiger/geiger-full.json
-            else
-              echo "Warning: geiger-full.json is missing or empty after $max_attempts attempts"
-              # Create a minimal JSON placeholder so downstream extractor doesn't crash parsing an empty file
-              mkdir -p target/geiger
-              if [ ! -s target/geiger/geiger-full.json ]; then
-                echo '{"error":"cargo-geiger-not-available-or-empty","notes":"See logs for details"}' > target/geiger/geiger-full.json
+          if [ -z "$manifests_filtered" ]; then
+            echo "No per-package manifests found; falling back to workspace Cargo.toml"
+            manifests_filtered="Cargo.toml"
+          fi
+
+          any_generated=0
+          for m in $manifests_filtered; do
+            pkgdir=$(dirname "$m")
+            # sanitize package dir name for filenames
+            sanitized=$(echo "$pkgdir" | sed 's#/#_##g' | sed 's#^\._##')
+            out_json="target/geiger/${sanitized:-root}-geiger.json"
+            out_human="target/geiger/${sanitized:-root}-geiger-human.txt"
+            echo "Running cargo-geiger for manifest $m -> $out_json"
+            if cargo --list | grep -q geiger; then
+              cargo geiger --manifest-path "$m" --all-targets --format json > "$out_json" || true
+              cargo geiger --manifest-path "$m" --all-targets > "$out_human" || true
+              if [ -s "$out_json" ]; then
+                any_generated=1
               fi
+            else
+              echo "cargo-geiger not available; skipping run for $m"
             fi
+          done
+
+          # Merge per-package JSON outputs into a single top-level JSON object if any exist
+          if [ $any_generated -eq 1 ]; then
+            echo "{" > target/geiger/geiger-full.json
+            first=1
+            for f in target/geiger/*-geiger.json; do
+              if [ -s "$f" ]; then
+                pkg=$(basename "$f" | sed 's/-geiger.json$//')
+                if [ $first -eq 0 ]; then
+                  echo "," >> target/geiger/geiger-full.json
+                fi
+                first=0
+                echo "\"$pkg\":" >> target/geiger/geiger-full.json
+                cat "$f" >> target/geiger/geiger-full.json
+              fi
+            done
+            echo "}" >> target/geiger/geiger-full.json
+          else
+            echo "Warning: no per-package geiger JSON produced; creating placeholder"
+            echo '{"error":"cargo-geiger-not-available-or-empty","notes":"See logs for details"}' > target/geiger/geiger-full.json
           fi
       - name: Run extractor and produce concise report
         run: |
