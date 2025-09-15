@@ -1,65 +1,30 @@
-﻿Draft: Security audit - cargo-audit + cargo-geiger artifacts
+﻿Draft security audit PR: cargo-geiger and cargo-audit results
 
 Summary
-- Added CI scan (cargo-audit + cargo-geiger) and collected artifacts.
-- Attached artifacts: target/audit/audit.json (cargo-audit), target/geiger/geiger-full.json, target/geiger/extract_manual.txt
+-------
+I ran cargo-geiger (local run) and cargo-audit in CI. cargo-audit reported no known vulnerabilities in the inspected runs. cargo-geiger reports unsafe-usage counts for `getrandom` (two versions present) and missing data for several target crates in the quick extract. The goal of this draft PR is conservative triage: gather artifacts, note immediate concerns, and propose low-risk mitigations.
 
-High-level findings
-- cargo-audit: no advisories found in the captured audit.json
-- cargo-geiger (selected crates): getrandom shows used unsafe (max 36 unsafe exprs across versions). signal-hook-registry, secp256k1, backtrace, bytes, smallvec were not present in local geiger-full.json for this run (MISSING) — fetch full CI artifact or re-run geiger on CI if needed.
+Key findings (from local geiger extract)
+---------------------------------------
+- getrandom (0.2.16 & 0.3.3): used unsafe expressions/functions: combined unsafe exprs ~36. This is expected for `getrandom` which interacts with OS RNG primitives and may use unsafe blocks for platform FFI or syscalls. Recommendation: pin to vetted versions and prefer MSRV-compatible updates; add an audit note explaining the unsafe usage is localized and maintained upstream.
+- signal-hook-registry, secp256k1, backtrace, bytes, smallvec: geiger quick extract returned "NOT FOUND" for these crates in the local quick output. Full geiger JSON (local `target/geiger/geiger-full.json`) should be attached for full triage. If CI artifacts are missing/empty we now retry geiger and copy top-level `geiger.json` as a fallback.
 
-Per-crate preliminary recommendations
-- getrandom (0.2.16,0.3.3): FOUND used unsafe count=36
-  - Action: review upstream changelogs/releases for safety-related fixes; prefer versions that reduce unsafe usage where feasible. Audit call sites in dependency graph that require getrandom; if unacceptable, consider pinning to a reviewed commit or vendor minimal RNG surface.
+Conservative remediation suggestions
+-----------------------------------
+- For getrandom: confirm upstream commit history and changelogs; if a CVE or memory-safety advisory exists, upgrade promptly. Otherwise document the usage and scope of unsafe in a short audit note in the repo (e.g., SECURITY.md or the PR body).
+- For crates not present in quick scan: after CI produces the full JSON (with our workflow hardening), parse `target/geiger/geiger-full.json` to list top crates by unsafe usage and prepare targeted remediation notes.
+- Add a CI check gate that fails the PR only when new unsafe usage is detected in our own crates (not in third-party crates) or when cargo-audit reports vulnerabilities. For third-party crates, prefer documentation + pinned updates.
 
-- signal-hook-registry: MISSING in this artifact
-  - Action: fetch CI artifact / re-run geiger; if used, ensure signal handling safety is audited and consider replacing with safer alternatives if needed.
-
-- secp256k1 / backtrace / bytes / smallvec: MISSING
-  - Action: fetch full CI artifacts and triage similarly.
+Artifacts
+---------
+- Attached (local): `target/geiger/geiger-full.json`, `target/geiger/extract_manual.txt` (human extract)
+- CI artifacts: `geiger-full-artifacts` (when produced by CI), `cargo-audit-report`
 
 Next steps
-1) Attach these artifacts to this draft PR for reviewer inspection.
-2) Run cargo-geiger across CI with --json to capture all crates and re-run extraction.
-3) Triage top unsafe-usage crates, propose conservative mitigations (pin/patch/remove) and open follow-up PRs with minimal changes.
+----------
+- Wait for CI run on branch `audit/geiger-top30-draft-pr` to finish; if artifacts are present, parse them and generate a prioritized list of third-party crates with the highest unsafe counts.
+- Prepare conservative remediation PR(s): pin versions, add audit notes, or propose replacements for crates with high unsafe usage if safety risk is high.
+- Mask/remove local secret files (keystore.json, priv.hex, pwd.txt) from the working tree. Suggest secret rotation if they were ever committed historically.
 
-Files included in branch:
-- .github/workflows/security-scan.yml (CI scan)
-- scripts/parse_geiger_manual.py, scripts/run_parse_geiger.ps1 (helpers)
-- target/geiger/geiger-full.json (CI artifact)
-- target/geiger/extract_manual.txt (extracted summary)
-- target/audit/audit.json (cargo-audit output)
-
-Please review and suggest any additional crates to triage or conservative fixes to apply.
-草稿：Geiger 安全审计报告
-
-此 PR 包含：
-- `.github/PULL_REQUEST_TEMPLATE/security_audit_geiger.md`（审计模板，包含 top-10 节选及建议）
-- `tmp_logs/geiger_top30_aggregated.csv`（聚合的 top-30 unsafe 计数 CSV）
-- `tmp_logs/geiger_ark_wallet_cli.txt`（完整 geiger 运行日志，供详查）
-
-请审阅：
-- 重点关注 top-3 依赖（sha2、bitcoin_hashes、zerocopy）的审计建议并留言是否需要深入审查或替换依赖。
-- 我可以随后将 `cargo audit` 与 `cargo geiger` 加入 CI（草稿 PR 可包含工作流文件）。
-
-若需要我也可以将此 PR 标为 Draft（当前已尝试自动创建）。
-
----
-
-Automated triage (from target/geiger/extract_manual.txt)
-
-- getrandom (0.2.16, 0.3.3): FOUND used unsafe count=36
-  - Impact: moderate — RNG crates often contain unsafe low-level platform code. We should inspect call sites and ensure only well-reviewed APIs are used.
-  - Suggestion: prefer newer getrandom releases if they reduce unsafe usage; audit dependent crates that expose RNG to security-sensitive code paths. Consider pinning to a specific vetted version or introducing a safe wrapper with limited surface.
-
-- signal-hook-registry: MISSING from this geiger run
-  - Action: re-run geiger (CI) or fetch a non-empty geiger-full.json from CI to confirm presence and versions; then triage unsafe usage.
-
-- secp256k1, backtrace, bytes, smallvec: MISSING
-  - Action: same as above — obtain full CI geiger JSON and re-run the extractor. If present, prioritize secp256k1 for manual review (crypto code) and smallvec/bytes for memory-safety usage patterns.
-
-Next actions (automated):
-1. Re-run CI security-scan until geiger-full.json is non-empty across runners or run geiger locally in CI runner context.
-2. When a full geiger JSON is available, parse and attach top-30 unsafe-usage CSV and a short remediation plan per crate.
-3. For any high-risk crates (crypto or native bindings) prepare follow-up PRs with conservative mitigations (pin, patch, replace) and tests.
+-- end of draft
 
