@@ -17,6 +17,8 @@ jobs:
         uses: actions-rs/toolchain@v1
         with:
           profile: minimal
+          toolchain: stable
+          default: true
       - name: Install cargo-audit
         run: |
           # Use a recent cargo-audit release
@@ -45,6 +47,8 @@ jobs:
         uses: actions-rs/toolchain@v1
         with:
           profile: minimal
+          toolchain: stable
+          default: true
       - name: Install cargo-geiger
         run: |
           cargo install cargo-geiger --version 0.27.0 || true
@@ -70,6 +74,8 @@ jobs:
         uses: actions-rs/toolchain@v1
         with:
           profile: minimal
+          toolchain: stable
+          default: true
       - name: Install cargo-geiger
         run: |
           cargo install cargo-geiger --version 0.27.0 || true
