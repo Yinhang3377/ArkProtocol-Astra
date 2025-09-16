@@ -1,6 +1,6 @@
 use anyhow::Result;
-use secp256k1::{Message, Secp256k1, SecretKey};
-use serde::{Deserialize, Serialize};
+use secp256k1::{ Message, Secp256k1, SecretKey };
+use serde::{ Deserialize, Serialize };
 use zeroize::Zeroize;
 
 /// Mode for signing: cold (from shards) or hot (from mnemonic)
@@ -36,15 +36,14 @@ pub fn sign(
     tx: &Tx,
     mode: Mode,
     shards: Option<(&[u8], &[u8])>,
-    mnemonic: Option<&str>,
+    mnemonic: Option<&str>
 ) -> Result<Signature> {
     let msg = serde_json::to_vec(tx)?;
     match mode {
         Mode::Cold => {
-            let (s1, s2) =
-                shards.ok_or_else(|| anyhow::anyhow!("shards required for cold mode"))?;
+            let (s1, s2) = shards.ok_or_else(|| anyhow::anyhow!("shards required for cold mode"))?;
             // local demo of combining shards -> derive 32-byte key -> sign
-            use sha2::{Digest, Sha256};
+            use sha2::{ Digest, Sha256 };
             let mut hasher = Sha256::new();
             hasher.update(s1);
             hasher.update(s2);
@@ -64,15 +63,16 @@ pub fn sign(
                 bip39::Language::English,
                 m,
                 "",
-                "m/44'/7777'/0'/0/0",
+                "m/44'/7777'/0'/0/0"
             )?;
             let sig = {
-                use sha2::{Digest, Sha256};
+                use sha2::{ Digest, Sha256 };
                 let mut hasher = Sha256::new();
                 hasher.update(&msg);
                 let digest = hasher.finalize();
-                let sk =
-                    SecretKey::from_slice(&priv32).map_err(|e| anyhow::anyhow!(e.to_string()))?;
+                let sk = SecretKey::from_slice(&priv32).map_err(|e|
+                    anyhow::anyhow!(e.to_string())
+                )?;
                 let secp = Secp256k1::signing_only();
                 let m = Message::from_slice(&digest[..32])?;
                 let s = secp.sign_ecdsa(&m, &sk);
@@ -99,10 +99,11 @@ mod tests {
             to: "addr".to_string(),
             amount: 100,
         };
-        let sig = sign(&tx, Mode::Cold, Some((s1.as_ref(), s2.as_ref())), None)
-            .expect("cold sign failed");
+        let sig = sign(&tx, Mode::Cold, Some((s1.as_ref(), s2.as_ref())), None).expect(
+            "cold sign failed"
+        );
         println!("cold sig len={}", sig.len());
-        assert!(sig.len() > 0);
+        assert!(!sig.is_empty());
     }
 
     #[test]
@@ -117,6 +118,6 @@ mod tests {
         };
         let sig = sign(&tx, Mode::Hot, None, Some(mnemonic)).expect("hot sign failed");
         println!("hot sig len={}", sig.len());
-        assert!(sig.len() > 0);
+        assert!(!sig.is_empty());
     }
 }
