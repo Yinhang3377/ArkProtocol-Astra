@@ -1,0 +1,27 @@
+﻿I detected a CI failure related to 'mkdir-windows' in logs ('./tmp_logs/17710465613.log').
+
+Suggested workflow snippet to add (please review before merging):
+
+```yaml
+        - name: Create dist directory (Unix)
+            if: runner.os != 'Windows'
+            run: mkdir -p dist
+            shell: bash
+
+        - name: Create dist directory (Windows)
+            if: runner.os == 'Windows'
+            run: New-Item -ItemType Directory -Path "$env:GITHUB_WORKSPACE\\dist" -Force | Out-Null
+            shell: pwsh
+
+        - name: Create local sccache dir (Unix)
+            if: runner.os != 'Windows'
+            run: mkdir -p ${{ github.workspace }}/.sccache
+            shell: bash
+
+        - name: Create local sccache dir (Windows)
+            if: runner.os == 'Windows'
+            run: New-Item -ItemType Directory -Path "$env:GITHUB_WORKSPACE\\.sccache" -Force | Out-Null
+            shell: pwsh
+```
+
+This PR is auto-created as a conservative proposal; it does not modify repository files automatically to avoid risky edits.

@@ -1,0 +1,76 @@
+﻿Draft security audit PR: cargo-geiger and cargo-audit results
+
+Summary
+-------
+I ran cargo-geiger (local run) and cargo-audit in CI. cargo-audit reported no known vulnerabilities in the inspected runs. cargo-geiger reports unsafe-usage counts for `getrandom` (two versions present) and missing data for several target crates in the quick extract. The goal of this draft PR is conservative triage: gather artifacts, note immediate concerns, and propose low-risk mitigations.
+
+Key findings (from local geiger extract)
+---------------------------------------
+- getrandom (0.2.16 & 0.3.3): used unsafe expressions/functions: combined unsafe exprs ~36. This is expected for `getrandom` which interacts with OS RNG primitives and may use unsafe blocks for platform FFI or syscalls. Recommendation: pin to vetted versions and prefer MSRV-compatible updates; add an audit note explaining the unsafe usage is localized and maintained upstream.
+- signal-hook-registry, secp256k1, backtrace, bytes, smallvec: geiger quick extract returned "NOT FOUND" for these crates in the local quick output. Full geiger JSON (local `target/geiger/geiger-full.json`) should be attached for full triage. If CI artifacts are missing/empty we now retry geiger and copy top-level `geiger.json` as a fallback.
+
+Conservative remediation suggestions
+-----------------------------------
+- For getrandom: confirm upstream commit history and changelogs; if a CVE or memory-safety advisory exists, upgrade promptly. Otherwise document the usage and scope of unsafe in a short audit note in the repo (e.g., SECURITY.md or the PR body).
+- For crates not present in quick scan: after CI produces the full JSON (with our workflow hardening), parse `target/geiger/geiger-full.json` to list top crates by unsafe usage and prepare targeted remediation notes.
+- Add a CI check gate that fails the PR only when new unsafe usage is detected in our own crates (not in third-party crates) or when cargo-audit reports vulnerabilities. For third-party crates, prefer documentation + pinned updates.
+
+Artifacts
+---------
+- Attached (local): `target/geiger/geiger-full.json`, `target/geiger/extract_manual.txt` (human extract)
+- CI artifacts: `geiger-full-artifacts` (when produced by CI), `cargo-audit-report`
+
+Next steps
+----------
+- Wait for CI run on branch `audit/geiger-top30-draft-pr` to finish; if artifacts are present, parse them and generate a prioritized list of third-party crates with the highest unsafe counts.
+- Prepare conservative remediation PR(s): pin versions, add audit notes, or propose replacements for crates with high unsafe usage if safety risk is high.
+- Mask/remove local secret files (keystore.json, priv.hex, pwd.txt) from the working tree. Suggest secret rotation if they were ever committed historically.
+
+-- end of draft
+
+CSV excerpt (selected crates)
+----------------------------
+I generated `tmp_logs/geiger_top30_aggregated.csv`. Excerpt of high-unsafe crates found locally:
+
+generic-array 0.14.7: unsafe exprs 1995
+memchr 2.7.5: unsafe exprs 1973
+sha2 0.10.9: unsafe exprs 1424
+
+Note: the specific requested crates (`getrandom`, `signal-hook-registry`, `secp256k1`, `backtrace`, `bytes`, `smallvec`) were not present in the top rows of the local aggregate output — they may be absent from this local geiger run, or cargo-geiger on CI will produce a fuller view. See `tmp_logs/geiger_top30_aggregated.csv` for the full list.
+
+Prioritized top-15 unsafe crates (from local geiger run)
+-------------------------------------------------------
+The local aggregate shows these high-unsafe crates (unsafe expressions used):
+
+1. generic-array 0.14.7 — 1995
+2. memchr 2.7.5 — 1973
+3. sha2 0.10.9 — 1424
+4. aes 0.8.4 — 765
+5. windows-sys 0.60.2 — 708
+6. ppv-lite86 0.2.21 — 632
+7. ryu 1.0.20 — 572
+8. anyhow 1.0.99 — 464
+9. bitcoin_hashes 0.13.0 — 409
+10. zerocopy 0.8.27 — 403
+11. console 0.16.0 — 380
+12. encode_unicode 1.0.0 — 223
+13. inout 0.1.4 — 126
+
+Immediate conservative remediations (per-crate)
+----------------------------------------------
+- For crypto or native-FFI heavy crates (sha2, aes, bitcoin_hashes, zerocopy):
+	- Pin to the highest vetted version publish that is compatible with our MSRV and has clear changelogs.
+	- Add a short audit note in PR explaining the unsafe surface is upstream and limited to low-level primitives.
+
+- For platform or sys crates (windows-sys):
+	- Keep pinned to known good versions, document why the unsafe usage is required (FFI to Windows APIs).
+
+- For high-unsafe utility crates (generic-array, memchr, ryu):
+	- These are mature and widely used; prefer documenting and pinning rather than large rewrites. If desired, open follow-up PRs to vendor or replace only if a security advisory is found.
+
+Next actions to finalize this draft PR
+-------------------------------------
+1. Attach available artifacts (local `target/geiger/geiger-full.json` and `tmp_logs/geiger_top30_aggregated.csv`) to the PR description.
+2. If CI produces non-empty geiger artifacts on subsequent runs, parse them and update the top-15 list to reflect CI reality.
+3. Open follow-up PRs for specific crates if we find recent advisories or unsafe usage in call-sites that touch security-sensitive code paths.
+
