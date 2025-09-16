@@ -15,12 +15,13 @@
 //! - JSON 导出（包含 file 与 privkey_hex）：`ark-wallet --json keystore export --file ks.json --password "pwd" --out-priv priv.hex`
 
 use bip39::Language;
-use clap::{ArgAction, Parser, Subcommand};
-use zeroize::{Zeroize, Zeroizing};
+use clap::{ ArgAction, Parser, Subcommand };
+use zeroize::{ Zeroize, Zeroizing };
 
 // 引入内部模块
 mod security;
 mod wallet;
+mod cli;
 
 /// 解析命令行传入的语言代码为 bip39::Language。
 fn parse_lang(code: &str) -> Language {
@@ -141,6 +142,21 @@ enum Cmd {
     Keystore {
         #[command(subcommand)]
         cmd: KsCmd,
+    },
+    /// Sign a transaction in cold or hot mode
+    Sign {
+        /// mode: cold | hot
+        #[arg(long, default_value = "cold")]
+        mode: String,
+        /// shard files for cold mode (provide two shards)
+        #[arg(long, num_args = 0..=2)]
+        shard: Vec<String>,
+        /// mnemonic for hot mode
+        #[arg(long)]
+        mnemonic: Option<String>,
+        /// transaction file (JSON) to sign
+        #[arg(long)]
+        file: Option<String>,
     },
 }
 
@@ -282,9 +298,7 @@ fn now_rfc3339() -> String {
 fn read_password_from_stdin() -> Result<Zeroizing<String>, crate::security::errors::SecurityError> {
     use std::io::Read;
     let mut s = String::new();
-    std::io::stdin()
-        .read_to_string(&mut s)
-        .map_err(crate::security::errors::SecurityError::Io)?;
+    std::io::stdin().read_to_string(&mut s).map_err(crate::security::errors::SecurityError::Io)?;
     // 去除换行（支持 \r\n 和 \n）
     let s = s.trim_end_matches(&['\r', '\n'][..]).to_string();
     Ok(Zeroizing::new(s))
@@ -294,7 +308,7 @@ fn read_password_from_stdin() -> Result<Zeroizing<String>, crate::security::erro
 // - 当检测到非交互环境（非 TTY），不会阻塞等待隐藏输入，而是回退为读取一行 STDIN
 // - 可通过设置 ARK_WALLET_WARN_NO_TTY=1 打印回退提示，默认静默
 fn read_password_interactive(
-    prompt: &str,
+    prompt: &str
 ) -> Result<Zeroizing<String>, crate::security::errors::SecurityError> {
     use dialoguer::Password;
 
@@ -304,9 +318,10 @@ fn read_password_interactive(
         if std::env::var_os("ARK_WALLET_WARN_NO_TTY").is_some() {
             eprintln!("检测到非交互环境：将从 STDIN 读取密码（建议改用 --password-stdin）");
         }
-        use std::io::{self, BufRead};
+        use std::io::{ self, BufRead };
         let mut line = String::new();
-        io::stdin()
+        io
+            ::stdin()
             .lock()
             .read_line(&mut line)
             .map_err(crate::security::errors::SecurityError::Io)?;
@@ -320,10 +335,9 @@ fn read_password_interactive(
         .with_prompt(&prompt_clean)
         .interact()
         .map_err(|e| {
-            crate::security::errors::SecurityError::Io(std::io::Error::other(format!(
-                "dialoguer failed: {}",
-                e
-            )))
+            crate::security::errors::SecurityError::Io(
+                std::io::Error::other(format!("dialoguer failed: {}", e))
+            )
         })?;
     Ok(Zeroizing::new(input))
 }
@@ -334,15 +348,16 @@ fn read_password_interactive(
 fn resolve_password(
     pw: Option<String>,
     from_stdin: bool,
-    prompt: bool,
+    prompt: bool
 ) -> Result<Zeroizing<String>, crate::security::errors::SecurityError> {
     // 以位加法统计来源数量（true 视为 1），确保恰好一个来源被选择
     let sources = (pw.is_some() as u8) + (from_stdin as u8) + (prompt as u8);
     if sources == 0 {
-        return Err(crate::security::errors::SecurityError::InvalidParams(
-            "password is required: provide --password or --password-stdin or --password-prompt"
-                .to_string(),
-        ));
+        return Err(
+            crate::security::errors::SecurityError::InvalidParams(
+                "password is required: provide --password or --password-stdin or --password-prompt".to_string()
+            )
+        );
     }
     if sources > 1 {
         return Err(
@@ -368,20 +383,24 @@ fn resolve_password_create(
     pw: Option<String>,
     from_stdin: bool,
     prompt: bool,
-    confirm: bool,
+    confirm: bool
 ) -> Result<Zeroizing<String>, crate::security::errors::SecurityError> {
     let pwd = resolve_password(pw, from_stdin, prompt)?;
     if confirm {
         if !prompt {
-            return Err(crate::security::errors::SecurityError::InvalidParams(
-                "--password-confirm requires --password-prompt".to_string(),
-            ));
+            return Err(
+                crate::security::errors::SecurityError::InvalidParams(
+                    "--password-confirm requires --password-prompt".to_string()
+                )
+            );
         }
         let pwd2 = read_password_interactive("Confirm password: ")?;
         if pwd.as_str() != pwd2.as_str() {
-            return Err(crate::security::errors::SecurityError::InvalidParams(
-                "passwords do not match".to_string(),
-            ));
+            return Err(
+                crate::security::errors::SecurityError::InvalidParams(
+                    "passwords do not match".to_string()
+                )
+            );
         }
     }
     Ok(pwd)
@@ -395,11 +414,7 @@ fn run() -> anyhow::Result<()> {
 
     let cli = Cli::parse();
     match cli.cmd {
-        Cmd::MnemonicNew {
-            lang,
-            words,
-            passphrase,
-        } => {
+        Cmd::MnemonicNew { lang, words, passphrase } => {
             use bip39::Mnemonic;
             let lang = parse_lang(&lang);
             // BIP39 词数 -> 熵长度映射（12/15/18/21/24 -> 128/160/192/224/256 bit）
@@ -438,16 +453,9 @@ fn run() -> anyhow::Result<()> {
             seed.zeroize();
         }
 
-        Cmd::MnemonicImport {
-            mnemonic,
-            mnemonic_file,
-            lang,
-            passphrase,
-            path,
-            full,
-        } => {
-            use bip32::{DerivationPath, XPrv};
-            use sha2::{Digest, Sha256};
+        Cmd::MnemonicImport { mnemonic, mnemonic_file, lang, passphrase, path, full } => {
+            use bip32::{ DerivationPath, XPrv };
+            use sha2::{ Digest, Sha256 };
 
             let lang = parse_lang(&lang);
             // 读取助记词来源：文件优先，否则使用命令行参数；均为空时报错
@@ -461,7 +469,8 @@ fn run() -> anyhow::Result<()> {
             } else {
                 anyhow::bail!("either --mnemonic or --mnemonic-file is required")
             };
-            let m = bip39::Mnemonic::parse_in(lang, &mn_text)
+            let m = bip39::Mnemonic
+                ::parse_in(lang, &mn_text)
                 .map_err(|e| security::errors::SecurityError::Parse(e.to_string()))?;
             // 助记词文本已解析，立即清理
             mn_text.zeroize();
@@ -512,6 +521,7 @@ fn run() -> anyhow::Result<()> {
                     n,
                     r,
                     p,
+                    // 擦除私钥
                     password,
                     password_stdin,
                     password_prompt,
@@ -535,7 +545,7 @@ fn run() -> anyhow::Result<()> {
                         lang, // 已解析的 Language
                         &mn_text,
                         passphrase.as_deref().unwrap_or(""),
-                        &path,
+                        &path
                     )?;
                     // Always use Base58Check for stored/printed addresses to avoid
                     // insecure legacy format. Keep `b58check` flag for import-time
@@ -550,7 +560,7 @@ fn run() -> anyhow::Result<()> {
                         password,
                         password_stdin,
                         password_prompt,
-                        password_confirm,
+                        password_confirm
                     )?;
                     // 最低长度约束（示例值：8），可根据安全要求调整
                     if password.len() < 8 {
@@ -569,7 +579,7 @@ fn run() -> anyhow::Result<()> {
                         iterations,
                         n,
                         r,
-                        p,
+                        p
                     )?;
                     let path_str = path.clone(); // JSON 输出中保留原始派生路径
                     let ks = wallet::keystore::Keystore {
@@ -588,7 +598,8 @@ fn run() -> anyhow::Result<()> {
                     // 使用安全原子写入，返回规范化绝对路径
                     let out_abs = crate::security::secure_atomic_write(p, json.as_bytes())?;
                     if cli.json {
-                        let out_json = serde_json::json!({
+                        let out_json =
+                            serde_json::json!({
                             "address": ks.address,
                             "path": path_str,
                             "file": out_abs.to_string_lossy()
@@ -647,7 +658,8 @@ fn run() -> anyhow::Result<()> {
 
                     if full || cli.json {
                         // 打印更多校验信息，包含 keystore 中记录的公钥 hex 与当前计算的是否一致
-                        let out = serde_json::json!({
+                        let out =
+                            serde_json::json!({
                             "address": address,
                             "path": ks.path,
                             "pubkey_hex": wallet::keystore::hex_lower(&pk33),
@@ -691,7 +703,8 @@ fn run() -> anyhow::Result<()> {
                         if let Some(outp) = out_priv {
                             // 写入文件，同时在 JSON 中返回规范化（绝对）路径与私钥 hex
                             let abs = crate::security::secure_atomic_write(&outp, hex.as_bytes())?;
-                            let out = serde_json::json!({ "privkey_hex": hex, "file": abs.to_string_lossy() });
+                            let out =
+                                serde_json::json!({ "privkey_hex": hex, "file": abs.to_string_lossy() });
                             println!("{}", serde_json::to_string_pretty(&out)?);
                         } else {
                             // 仅返回私钥 hex（不写文件）
@@ -715,6 +728,39 @@ fn run() -> anyhow::Result<()> {
                 }
             } // end match cmd
         } // end Cmd::Keystore arm
+
+        Cmd::Sign { mode, shard, mnemonic, file } => {
+            // load tx from file or error
+            let tx_json = if let Some(f) = file {
+                std::fs::read_to_string(f)?
+            } else {
+                anyhow::bail!("--file is required for sign")
+            };
+            let tx: crate::cli::Tx = serde_json::from_str(&tx_json)?;
+            let mode = crate::cli::Mode::from_str(&mode)?;
+            let shards_opt = if shard.len() >= 2 {
+                let s1 = std::fs::read(&shard[0])?;
+                let s2 = std::fs::read(&shard[1])?;
+                Some((s1, s2))
+            } else {
+                None
+            };
+            let sig = match mode {
+                crate::cli::Mode::Cold => {
+                    let (ref s1, ref s2) = shards_opt
+                        .as_ref()
+                        .ok_or_else(|| anyhow::anyhow!("two shard files required for cold mode"))?;
+                    crate::cli::sign(&tx, mode, Some((s1.as_ref(), s2.as_ref())), None)?
+                }
+                crate::cli::Mode::Hot => {
+                    let m = mnemonic
+                        .as_deref()
+                        .ok_or_else(|| anyhow::anyhow!("--mnemonic required for hot mode"))?;
+                    crate::cli::sign(&tx, mode, None, Some(m))?
+                }
+            };
+            println!("signature: {}", hex::encode(sig));
+        }
     } // end match cli.cmd
     Ok(())
 }

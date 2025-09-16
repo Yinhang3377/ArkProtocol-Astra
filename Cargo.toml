@@ -38,6 +38,7 @@ pbkdf2 = "0.12"
 scrypt = "0.11"
 base64 = "0.22"
 k256 = { version = "0.13", features = ["ecdsa"] }
+secp256k1 = "0.27"
 zeroize = "1"
 chrono = "0.4"
 
