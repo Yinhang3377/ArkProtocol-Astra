@@ -9,6 +9,7 @@ members = [
   "crates/ark-rpc",
   "crates/ark-node",
   "crates/ark-wallet-cli",
+  "nova-core",
 ]
 resolver = "2"
 

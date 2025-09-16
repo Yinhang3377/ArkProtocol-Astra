@@ -1,0 +1,7 @@
+[package]
+name = "mpc-tools"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+threshold-crypto = "0.8"

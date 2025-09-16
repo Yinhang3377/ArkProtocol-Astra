@@ -4,6 +4,10 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-ark-wallet = { path = "crates/ark-wallet" }
+ark-wallet = { path = "../crates/ark-wallet" }
 anyhow = "1"
 sha2 = "0.10"
+
+[[bin]]
+name = "nova-runner"
+path = "src/main.rs"

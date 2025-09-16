@@ -1,0 +1,75 @@
+diff --git a/nova-core/Cargo.toml b/nova-core/Cargo.toml
+new file mode 100644
+index 0000000..0000000
+--- /dev/null
++++ b/nova-core/Cargo.toml
+@@ -0,0 +1,9 @@
++[package]
++name = "nova-core"
++version = "0.1.0"
++edition = "2021"
++
++[dependencies]
++ark-wallet = { path = "../../crates/ark-wallet" }
++anyhow = "1"
++
+
+diff --git a/nova-core/src/lib.rs b/nova-core/src/lib.rs
+new file mode 100644
+index 0000000..0000000
+--- /dev/null
++++ b/nova-core/src/lib.rs
+@@ -0,0 +1,4 @@
++pub mod bridge;
++pub mod wallet;
++
++pub use bridge::lock as bridge_lock;
++
+
+diff --git a/nova-core/src/bridge.rs b/nova-core/src/bridge.rs
+new file mode 100644
+index 0000000..0000000
+--- /dev/null
++++ b/nova-core/src/bridge.rs
+@@ -0,0 +1,36 @@
++/// Bridge module - exposes lock() which should involve signing at the wallet layer.
++use anyhow::Result;
++
++/// Lock an amount — this function will request the wallet to sign the lock transaction hash.
++pub fn lock(amount: u64) -> Result<Vec<u8>> {
++    // In the real system the lock() would construct a transaction and compute its hash.
++    // For the demo, compute a fake 32-byte hash derived from amount.
++    use sha2::{Digest, Sha256};
++    let mut h = Sha256::new();
++    h.update(&amount.to_le_bytes());
++    let hash = h.finalize();
++
++    // Delegate signing to the wallet module (which will call ark-wallet::cold_sign)
++    crate::wallet::sign_lock(&hash)
++}
++
+
+diff --git a/nova-core/src/wallet.rs b/nova-core/src/wallet.rs
+new file mode 100644
+index 0000000..0000000
+--- /dev/null
++++ b/nova-core/src/wallet.rs
+@@ -0,0 +1,22 @@
++/// Wallet bridge adapter — calls into the ark-wallet crate for cold signing.
++use anyhow::Result;
++
++/// Sign the lock transaction hash via the cold wallet
++pub fn sign_lock(hash: &[u8]) -> Result<Vec<u8>> {
++    // Forward to the ark-wallet crate's public API
++    let sig = ark_wallet::cold_sign(hash).map_err(|_| anyhow::anyhow!("cold_sign error"))?;
++    Ok(sig)
++}
++
++
++# Notes:
++# - This patch adds a minimal `nova-core` crate (under `nova-core/`) that demonstrates
++#   calling `ark-wallet`'s cold_sign API from the bridge layer. Adjust the dependency
++#   path for `ark-wallet` in `Cargo.toml` as appropriate for your Nova repository layout.
++# - To apply this patch in your Nova repository root run:
++#     git apply /path/to/nova-core-cold-sign.patch
++#   Then review and commit the new files.

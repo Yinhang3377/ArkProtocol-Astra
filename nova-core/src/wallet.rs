@@ -3,8 +3,8 @@ use anyhow::Result;
 
 /// Sign the lock transaction hash via the cold wallet
 pub fn sign_lock(hash: &[u8]) -> Result<Vec<u8>> {
-    // Forward to the ark-wallet crate's public API
-    let sig = ark_wallet::cold_sign(hash).map_err(|_| anyhow::anyhow!("cold_sign error"))?;
+    // Forward to the ark-wallet crate's public API (lib name = "wallet")
+    let sig = wallet::cold_sign(hash).map_err(|_| anyhow::anyhow!("cold_sign error"))?;
     Ok(sig)
 }
 
