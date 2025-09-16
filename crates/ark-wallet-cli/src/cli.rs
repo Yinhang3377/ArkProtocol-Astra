@@ -102,7 +102,7 @@ mod tests {
         let sig = sign(&tx, Mode::Cold, Some((s1.as_ref(), s2.as_ref())), None)
             .expect("cold sign failed");
         println!("cold sig len={}", sig.len());
-        assert!(sig.len() > 0);
+        assert!(!sig.is_empty());
     }
 
     #[test]
@@ -117,6 +117,6 @@ mod tests {
         };
         let sig = sign(&tx, Mode::Hot, None, Some(mnemonic)).expect("hot sign failed");
         println!("hot sig len={}", sig.len());
-        assert!(sig.len() > 0);
+        assert!(!sig.is_empty());
     }
 }

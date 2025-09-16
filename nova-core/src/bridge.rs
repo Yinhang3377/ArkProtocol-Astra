@@ -7,7 +7,7 @@ pub fn lock(amount: u64) -> Result<Vec<u8>> {
     // For the demo, compute a fake 32-byte hash derived from amount.
     use sha2::{Digest, Sha256};
     let mut h = Sha256::new();
-    h.update(&amount.to_le_bytes());
+    h.update(amount.to_le_bytes());
     let hash = h.finalize();
 
     // Delegate signing to the wallet module (which will call ark-wallet::cold_sign)
