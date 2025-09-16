@@ -40,6 +40,7 @@ base64 = "0.22"
 k256 = { version = "0.13", features = ["ecdsa"] }
 zeroize = "1"
 chrono = "0.4"
+rand = "0.8.5"
 
 [profile.release]
 lto = "thin"
