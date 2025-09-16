@@ -214,7 +214,10 @@ dependencies = [
 name = "ark-wallet"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
+ "rand",
  "secp256k1",
+ "sha2",
  "zeroize",
 ]
 
