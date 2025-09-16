@@ -7,7 +7,9 @@ fn main() -> Result<()> {
         eprintln!("usage: nova-runner <amount>");
         std::process::exit(2);
     }
-    let amount: u64 = args[1].parse().map_err(|_| anyhow::anyhow!("invalid amount"))?;
+    let amount: u64 = args[1]
+        .parse()
+        .map_err(|_| anyhow::anyhow!("invalid amount"))?;
 
     let sig = nova_core::bridge::lock(amount)?;
     // we expect cold_sign to print or return signature; print a marker

@@ -1,6 +1,6 @@
-use secp256k1::{ Message, SecretKey, Secp256k1 };
-use zeroize::Zeroize;
+use secp256k1::{Message, Secp256k1, SecretKey};
 use std::fs;
+use zeroize::Zeroize;
 
 /// Wallet error for cold signing
 pub enum WalletError {

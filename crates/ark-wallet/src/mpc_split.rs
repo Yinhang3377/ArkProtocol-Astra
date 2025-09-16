@@ -1,5 +1,5 @@
 // mpc_split.rs - 2-of-3 分片备份示例
-use sha2::{ Sha256, Digest };
+use sha2::{Digest, Sha256};
 
 /// Split a 32-byte secret into 3 shares with threshold = 1 (i.e. 2-of-3 reconstruction)
 pub fn split_key(key_bytes: &[u8]) -> anyhow::Result<(Vec<u8>, Vec<u8>, Vec<u8>)> {
