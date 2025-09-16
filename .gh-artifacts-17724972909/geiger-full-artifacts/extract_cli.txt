@@ -1,0 +1,15 @@
+Geiger extract for target crates:
+- getrandom: NOT FOUND in geiger-full.json
+- signal-hook-registry: NOT FOUND in geiger-full.json
+- secp256k1: NOT FOUND in geiger-full.json
+- backtrace: NOT FOUND in geiger-full.json
+- bytes: NOT FOUND in geiger-full.json
+- smallvec: NOT FOUND in geiger-full.json
+
+Recommendations (automated hints):
+- getrandom: missing — re-run unsafe scanner on linux/CI to get stable metrics
+- signal-hook-registry: missing — re-run unsafe scanner on linux/CI to get stable metrics
+- secp256k1: missing — re-run unsafe scanner on linux/CI to get stable metrics
+- backtrace: missing — re-run unsafe scanner on linux/CI to get stable metrics
+- bytes: missing — re-run unsafe scanner on linux/CI to get stable metrics
+- smallvec: missing — re-run unsafe scanner on linux/CI to get stable metrics

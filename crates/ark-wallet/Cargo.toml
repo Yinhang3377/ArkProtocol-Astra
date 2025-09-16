@@ -1,0 +1,13 @@
+[package]
+name = "ark-wallet"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+zeroize = "1"
+secp256k1 = "0.27"
+
+[lib]
+name = "wallet"
+path = "src/lib.rs"
+crate-type = ["rlib"]

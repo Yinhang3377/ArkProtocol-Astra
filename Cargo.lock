@@ -211,6 +211,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "ark-wallet"
+version = "0.1.0"
+dependencies = [
+ "secp256k1",
+ "zeroize",
+]
+
+[[package]]
 name = "ark-wallet-cli"
 version = "0.1.1"
 dependencies = [
@@ -927,6 +935,15 @@ name = "normalize-line-endings"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "61807f77802ff30975e01f4f071c8ba10c022052f98b3294119f3e615d13e5be"
+
+[[package]]
+name = "nova-core"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "ark-wallet",
+ "sha2",
+]
 
 [[package]]
 name = "nu-ansi-term"
