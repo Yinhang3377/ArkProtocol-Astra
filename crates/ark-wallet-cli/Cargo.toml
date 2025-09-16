@@ -33,6 +33,7 @@ thiserror = "1"
 dunce = "1"
 rand = "0.8"
 hex = "0.4"
+secp256k1 = { workspace = true }
 
 [[bin]]
 name = "ark-wallet"

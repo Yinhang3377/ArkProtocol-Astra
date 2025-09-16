@@ -19,6 +19,7 @@ use clap::{ArgAction, Parser, Subcommand};
 use zeroize::{Zeroize, Zeroizing};
 
 // 引入内部模块
+mod cli;
 mod security;
 mod wallet;
 
@@ -141,6 +142,21 @@ enum Cmd {
     Keystore {
         #[command(subcommand)]
         cmd: KsCmd,
+    },
+    /// Sign a transaction in cold or hot mode
+    Sign {
+        /// mode: cold | hot
+        #[arg(long, default_value = "cold")]
+        mode: String,
+        /// shard files for cold mode (provide two shards)
+        #[arg(long, num_args = 0..=2)]
+        shard: Vec<String>,
+        /// mnemonic for hot mode
+        #[arg(long)]
+        mnemonic: Option<String>,
+        /// transaction file (JSON) to sign
+        #[arg(long)]
+        file: Option<String>,
     },
 }
 
@@ -512,6 +528,7 @@ fn run() -> anyhow::Result<()> {
                     n,
                     r,
                     p,
+                    // 擦除私钥
                     password,
                     password_stdin,
                     password_prompt,
@@ -715,6 +732,44 @@ fn run() -> anyhow::Result<()> {
                 }
             } // end match cmd
         } // end Cmd::Keystore arm
+
+        Cmd::Sign {
+            mode,
+            shard,
+            mnemonic,
+            file,
+        } => {
+            // load tx from file or error
+            let tx_json = if let Some(f) = file {
+                std::fs::read_to_string(f)?
+            } else {
+                anyhow::bail!("--file is required for sign")
+            };
+            let tx: crate::cli::Tx = serde_json::from_str(&tx_json)?;
+            let mode = crate::cli::Mode::from_str(&mode)?;
+            let shards_opt = if shard.len() >= 2 {
+                let s1 = std::fs::read(&shard[0])?;
+                let s2 = std::fs::read(&shard[1])?;
+                Some((s1, s2))
+            } else {
+                None
+            };
+            let sig = match mode {
+                crate::cli::Mode::Cold => {
+                    let (ref s1, ref s2) = shards_opt
+                        .as_ref()
+                        .ok_or_else(|| anyhow::anyhow!("two shard files required for cold mode"))?;
+                    crate::cli::sign(&tx, mode, Some((s1.as_ref(), s2.as_ref())), None)?
+                }
+                crate::cli::Mode::Hot => {
+                    let m = mnemonic
+                        .as_deref()
+                        .ok_or_else(|| anyhow::anyhow!("--mnemonic required for hot mode"))?;
+                    crate::cli::sign(&tx, mode, None, Some(m))?
+                }
+            };
+            println!("signature: {}", hex::encode(sig));
+        }
     } // end match cli.cmd
     Ok(())
 }
