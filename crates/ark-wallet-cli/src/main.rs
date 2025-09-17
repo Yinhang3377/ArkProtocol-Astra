@@ -161,6 +161,27 @@ enum Cmd {
         #[arg(long, default_value = "https://your-repo.github.io/relay.js")]
         relay: String,
     },
+    /// Prepare an AES-GCM envelope for a TX (hot-sign two-phase prepare)
+    Prepare {
+        /// mnemonic for hot mode (required)
+        #[arg(long)]
+        mnemonic: Option<String>,
+        /// transaction file (JSON) to sign
+        #[arg(long)]
+        file: Option<String>,
+    },
+    /// Decrypt an AES-GCM envelope produced by `prepare`
+    Decrypt {
+        /// envelope JSON string (use --file to read from a file)
+        #[arg(long)]
+        envelope: Option<String>,
+        /// read envelope from a file (alternative to --envelope)
+        #[arg(long)]
+        file: Option<String>,
+        /// ephemeral key in base64 (required)
+        #[arg(long)]
+        key_b64: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -819,6 +840,47 @@ fn run() -> anyhow::Result<()> {
                 }
             };
             println!("signature: {}", hex::encode(sig));
+        }
+        Cmd::Prepare { mnemonic, file } => {
+            let tx_json = if let Some(f) = file {
+                std::fs::read_to_string(f)?
+            } else {
+                anyhow::bail!("--file is required for prepare")
+            };
+            let tx: crate::cli::Tx = serde_json::from_str(&tx_json)?;
+            let m = mnemonic
+                .as_deref()
+                .ok_or_else(|| anyhow::anyhow!("--mnemonic is required for prepare"))?;
+            let (env_json, key_b64) = crate::cli::hot_prepare_envelope(&tx, m)?;
+            if cli.json {
+                let out = serde_json::json!({ "envelope": serde_json::from_str::<serde_json::Value>(&env_json)?, "key_b64": key_b64 });
+                println!("{}", serde_json::to_string_pretty(&out)?);
+            } else {
+                println!("envelope: {}", env_json);
+                println!("ephemeral_key_b64: {}", key_b64);
+            }
+        }
+        Cmd::Decrypt {
+            envelope,
+            file,
+            key_b64,
+        } => {
+            let env_json = if let Some(e) = envelope {
+                e
+            } else if let Some(f) = file {
+                std::fs::read_to_string(f)?
+            } else {
+                anyhow::bail!("--envelope or --file is required for decrypt")
+            };
+            let key = key_b64
+                .as_deref()
+                .ok_or_else(|| anyhow::anyhow!("--key-b64 is required for decrypt"))?;
+            let signed = crate::cli::hot_decrypt_envelope(&env_json, key)?;
+            if cli.json {
+                println!("{}", serde_json::to_string_pretty(&signed)?);
+            } else {
+                println!("signed: {}", serde_json::to_string_pretty(&signed)?);
+            }
         }
     } // end match cli.cmd
     Ok(())
