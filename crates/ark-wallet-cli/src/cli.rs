@@ -15,14 +15,22 @@ pub enum Mode {
     Cold,
     Hot,
 }
-
 impl Mode {
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Result<Mode> {
         match s {
             "cold" => Ok(Mode::Cold),
             "hot" => Ok(Mode::Hot),
-            _ => anyhow::bail!("unknown mode: {}", s),
+            _ => Err(anyhow::anyhow!("invalid mode: {}", s)),
         }
+    }
+}
+
+impl std::str::FromStr for Mode {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        Mode::from_str(s)
     }
 }
 
@@ -66,22 +74,30 @@ pub fn sign(
                 shards.ok_or_else(|| anyhow::anyhow!("shards required for cold mode"))?;
             // local demo of combining shards -> derive 32-byte key -> sign
             use sha2::{Digest, Sha256};
+            // Derive 32-byte key material from shards (KDF). Use it as the private key.
             let mut hasher = Sha256::new();
             hasher.update(s1);
             hasher.update(s2);
-            hasher.update(&msg);
             let key32 = hasher.finalize();
             let sk = SecretKey::from_slice(&key32).map_err(|e| anyhow::anyhow!(e.to_string()))?;
             let secp = Secp256k1::signing_only();
-            let m = Message::from_slice(&key32[..32])?;
+            // Message to sign must be the digest of tx (not the key material)
+            let mut msg_hasher = Sha256::new();
+            msg_hasher.update(&msg);
+            let digest = msg_hasher.finalize();
+            let m = Message::from_slice(&digest[..32])?;
             let s = secp.sign_ecdsa(&m, &sk);
             let sig = s.serialize_der().to_vec();
+            // Zeroize derived key material immediately
+            let mut key_mut: [u8; 32] = [0u8; 32];
+            key_mut.copy_from_slice(&key32);
+            key_mut.zeroize();
             Ok(sig)
         }
         Mode::Hot => {
             let m = mnemonic.ok_or_else(|| anyhow::anyhow!("mnemonic required for hot mode"))?;
             // derive private key from mnemonic (demo uses wallet::hd convenience)
-            let (priv32, _pk33, _path) = crate::wallet::hd::derive_priv_from_mnemonic(
+            let (priv32, _pk33) = crate::wallet::hd::derive_priv_from_mnemonic(
                 bip39::Language::English,
                 m,
                 "",
