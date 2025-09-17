@@ -6,8 +6,8 @@
 //! - 安全：尽早 Zeroize 种子与私钥；仅在必要范围内持有敏感数据
 
 use crate::security::errors::SecurityError;
-use bip32::{DerivationPath, XPrv};
-use bip39::{Language, Mnemonic};
+use bip32::{ DerivationPath, XPrv };
+use bip39::{ Language, Mnemonic };
 use k256::ecdsa::SigningKey;
 use std::result::Result as StdResult;
 use zeroize::Zeroizing;
@@ -24,17 +24,19 @@ pub fn derive_priv_from_mnemonic(
     lang: Language,
     mnemonic_text: &str,
     passphrase: &str,
-    path: &str,
+    path: &str
 ) -> StdResult<([u8; 32], [u8; 33]), SecurityError> {
-    let m = Mnemonic::parse_in(lang, mnemonic_text)
-        .map_err(|e| SecurityError::Parse(format!("bip39 parse error: {}", e)))?;
+    let m = Mnemonic::parse_in(lang, mnemonic_text).map_err(|e|
+        SecurityError::Parse(format!("bip39 parse error: {}", e))
+    )?;
     // Wrap seed in Zeroizing so it is cleared on drop
     let seed = Zeroizing::new(m.to_seed(passphrase));
     let dp: DerivationPath = path
         .parse()
         .map_err(|e| SecurityError::Parse(format!("derivation path parse error: {}", e)))?;
-    let xprv = XPrv::derive_from_path(seed.as_ref(), &dp)
-        .map_err(|e| SecurityError::Parse(format!("xprv derive error: {}", e)))?;
+    let xprv = XPrv::derive_from_path(seed.as_ref(), &dp).map_err(|e|
+        SecurityError::Parse(format!("xprv derive error: {}", e))
+    )?;
 
     // private_key().to_bytes() -> GenericArray -> 拷贝到 [u8;32]
     let fb = xprv.private_key().to_bytes();
@@ -54,8 +56,9 @@ pub fn derive_priv_from_mnemonic(
 /// - 用于 keystore 解密后还原地址、公钥等
 pub fn pubkey_from_privkey_secp256k1(priv32: &[u8; 32]) -> StdResult<[u8; 33], SecurityError> {
     // SigningKey::from_bytes 需要 FieldBytes 引用（priv32.into()）
-    let sk = SigningKey::from_bytes(priv32.into())
-        .map_err(|e| SecurityError::Crypto(format!("k256 error: {}", e)))?;
+    let sk = SigningKey::from_bytes(priv32.into()).map_err(|e|
+        SecurityError::Crypto(format!("k256 error: {}", e))
+    )?;
     let vk = sk.verifying_key();
     let ep = vk.to_encoded_point(true);
     let bytes = ep.as_bytes();
@@ -87,13 +90,13 @@ mod tests {
 
     #[test]
     fn zeroize_regression_demo() {
-        use zeroize::{Zeroize, Zeroizing};
+        use zeroize::{ Zeroize, Zeroizing };
         // Create a buffer and wrap in Zeroizing, fill it with non-zero bytes
         let mut buf = [0u8; 32];
         for i in 0..32 {
             buf[i] = (i as u8).wrapping_add(1);
         }
-        let mut z = Zeroizing::new(buf);
+        let z = Zeroizing::new(buf);
         // Ensure buffer contains non-zero data
         assert!(z.iter().any(|&b| b != 0));
         // Explicitly zeroize by dropping the wrapper
