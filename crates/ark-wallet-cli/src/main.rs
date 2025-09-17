@@ -762,12 +762,19 @@ fn run() -> anyhow::Result<()> {
                     // Prepare envelope (this signs and zeroizes the derived private key internally)
                     let (env_json, key_b64) = crate::cli::hot_prepare_envelope(&tx, m)?;
 
-                    // POST to relay (blocking)
+                    // POST to relay (blocking). One-click mode: include the ephemeral key
+                    // so the relay can broadcast without a QR step. WARNING: including
+                    // the key weakens the threat model; only use trusted relays.
                     let client = reqwest::blocking::Client::new();
+                    let post_body =
+                        serde_json::json!({
+                        "envelope": serde_json::from_str::<serde_json::Value>(&env_json)?,
+                        "key_b64": key_b64,
+                    });
                     let res = client
                         .post(&relay)
                         .header("content-type", "application/json")
-                        .body(env_json.clone())
+                        .body(post_body.to_string())
                         .send();
                     match res {
                         Ok(r) => {
@@ -780,9 +787,25 @@ fn run() -> anyhow::Result<()> {
                         }
                     }
 
+                    // Zeroize ephemeral key client-side after a short delay (0.1s) to
+                    // simulate self-destruct timing and reduce memory window. This is
+                    // best-effort; ensure the key isn't retained elsewhere by callers.
+                    {
+                        use std::{ thread, time::Duration };
+                        // key_b64 is a String; convert to mutable and zeroize its bytes
+                        let mut kb = key_b64;
+                        thread::sleep(Duration::from_millis(100));
+                        // overwrite with zeros
+                        unsafe {
+                            let s = kb.as_mut_vec();
+                            for b in s.iter_mut() {
+                                *b = 0;
+                            }
+                        }
+                    }
+
                     // For backwards compatibility, return a placeholder signature value
-                    // since the actual signing was performed inside the envelope. We
-                    // return empty signature to indicate the signer used relay mode.
+                    // since the actual signing was performed inside the envelope.
                     Vec::new()
                 }
             };
