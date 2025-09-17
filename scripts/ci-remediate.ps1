@@ -1,3 +1,4 @@
+
 <#
 ci-remediate.ps1
 
@@ -21,134 +22,145 @@ param(
     [string]$RepoOwner = 'Yinhang3377',
     [string]$RepoName = 'ArkProtocol-Astra',
     [int]$Limit = 5,
-    [switch]$AutoAbortMerge,
-    [switch]$AutoApplyPatches
+    [int]$MaxAttempts = 6,
+    [bool]$DryRun = $true
 )
 
 $repo = "$RepoOwner/$RepoName"
-$logDir = Join-Path $PWD 'gh_logs'
-$exDir = Join-Path $logDir 'extracted'
+$logRoot = Join-Path $PWD 'gh_logs'
 $fixFile = Join-Path $PWD 'ci-fixes.txt'
 
-function Invoke-Safe { param($cmd) Invoke-Expression $cmd }
-
-Write-Host "Starting CI remediation loop for $repo" -ForegroundColor Cyan
-
-# Step 0: abort unfinished merge if requested
-if (Test-Path .git\MERGE_HEAD) {
-    if ($AutoAbortMerge) {
-        Write-Host "Auto-aborting unfinished merge" -ForegroundColor Yellow
-        git merge --abort
+function Run-Cmd([string]$cmd, [switch]$Quiet) {
+    Write-Host "CMD> $cmd"
+    if (-not $DryRun) {
+        if ($Quiet) {
+            Invoke-Expression $cmd | Out-Null
+        } else {
+            Invoke-Expression $cmd
+        }
     } else {
-        $ans = Read-Host "Unfinished merge detected. Type 'abort' to abort or 'continue' to leave it";
-        if ($ans -eq 'abort') { git merge --abort }
+        Write-Host "(DryRun) Skipping execution" -ForegroundColor Yellow
     }
 }
 
-# Ensure up-to-date main
-Write-Host "Fetching origin/main and updating local main" -ForegroundColor Cyan
-Safe-Run 'git fetch origin main'
-# Do a hard reset of local main to remote main to ensure we test merges against latest main
-Safe-Run 'git checkout main' 2>$null
-Safe-Run 'git reset --hard origin/main'
+function Ensure-Dir([string]$p) {
+    if (-not (Test-Path $p)) { New-Item -ItemType Directory -Path $p | Out-Null }
+}
 
-# Switch back to working branch if needed
-$branch = (git rev-parse --abbrev-ref HEAD).Trim()
-Write-Host "Current branch: $branch" -ForegroundColor Green
+Write-Host "Starting conservative CI remediation (DryRun=$DryRun) for $repo" -ForegroundColor Cyan
 
-# Start the remediation loop
-while ($true) {
-    # list recent failed runs
-    $runsOut = gh run list --repo $repo --limit $Limit --json id,name,head_branch,status,conclusion,html_url 2>$null
-    if (-not $runsOut) { Write-Host "gh run list returned no output; ensure gh is authenticated and you have repo access" -ForegroundColor Red; break }
-    $runs = $runsOut | ConvertFrom-Json
-    $fails = $runs | Where-Object { $_.conclusion -ne $null -and $_.conclusion -ne 'success' }
-    if (-not $fails) { Write-Host "No failed runs found. All good." -ForegroundColor Green; break }
+# remember current branch
+$branch = (git rev-parse --abbrev-ref HEAD 2>$null).Trim()
+Write-Host "Working branch: $branch" -ForegroundColor Green
 
-    foreach ($r in $fails) {
-        Write-Host "Processing failed run $($r.id) ($($r.name)) branch $($r.head_branch) conclusion $($r.conclusion)" -ForegroundColor Yellow
-        "Run: $($r.id) $($r.name) $($r.head_branch) $($r.html_url) - conclusion: $($r.conclusion)" | Out-File -Append -FilePath $fixFile
+# Ensure gh is available
+try { gh --version | Out-Null } catch { Write-Host "gh CLI not found or not authenticated. Aborting." -ForegroundColor Red; exit 1 }
 
-        # download logs
-        Remove-Item -Recurse -Force $logDir -ErrorAction SilentlyContinue
-        gh run download $($r.id) --repo $repo -D $logDir 2>$null
-        Get-ChildItem $logDir -Filter '*.zip' -File -ErrorAction SilentlyContinue | ForEach-Object { Expand-Archive -Path $_.FullName -DestinationPath $exDir -Force }
+$attempt = 0
+while ($attempt -lt $MaxAttempts) {
+    $attempt++
+    Write-Host "\n--- Attempt $attempt / $MaxAttempts ---" -ForegroundColor Cyan
 
-        $txts = Get-ChildItem $exDir -Recurse -Filter '*.txt' -ErrorAction SilentlyContinue
+    # list recent runs
+    $runsJson = gh run list --repo $repo --limit $Limit --json databaseId,conclusion,headBranch,headSha,name,htmlUrl,status 2>$null
+    if (-not $runsJson) { Write-Host "gh run list returned no output; check gh auth/permissions" -ForegroundColor Red; break }
+    $runs = $runsJson | ConvertFrom-Json
+    $failed = $runs | Where-Object { $_.conclusion -and $_.conclusion -ne 'success' }
+    if (-not $failed) { Write-Host "No failed runs found. Nothing to remediate." -ForegroundColor Green; break }
+
+    foreach ($r in $failed) {
+        Write-Host "Processing run $($r.databaseId) - $($r.name) (branch: $($r.headBranch)) conclusion=$($r.conclusion)" -ForegroundColor Yellow
+        "$((Get-Date).ToString()) Run: $($r.databaseId) $($r.name) $($r.headBranch) $($r.htmlUrl) - conclusion: $($r.conclusion)" | Out-File -Append -FilePath $fixFile
+
+        # prepare log dir
+        $runDir = Join-Path $logRoot $r.databaseId
+        if (Test-Path $runDir) { Remove-Item -Recurse -Force $runDir -ErrorAction SilentlyContinue }
+        Ensure-Dir $runDir
+
+        Write-Host "Downloading logs for run $($r.databaseId) to $runDir" -ForegroundColor Cyan
+        if (-not $DryRun) { gh run download $($r.databaseId) --repo $repo -D $runDir } else { Write-Host "(DryRun) gh run download $($r.databaseId) --repo $repo -D $runDir" }
+
+        # find extracted text logs
+        $txts = Get-ChildItem $runDir -Recurse -Filter '*.txt' -ErrorAction SilentlyContinue
         if (-not $txts) {
-            Write-Host "No textual logs found for run $($r.id); skipping" -ForegroundColor Yellow
+            Write-Host "No textual logs found for run $($r.databaseId). If DryRun=false the script would have attempted to download logs." -ForegroundColor Yellow
             continue
         }
 
-        $cands = $txts | Sort-Object LastWriteTime -Descending | Select-Object -First 5
-        foreach ($c in $cands) {
-            Write-Host "Inspecting $($c.FullName)" -ForegroundColor Cyan
-            $lines = Get-Content $c.FullName -Tail 200 -ErrorAction SilentlyContinue
-            $snippet = $lines | Select-Object -Last 20
-            $snippet | Out-File -Append -FilePath $fixFile
-            $joined = $snippet -join "`n"
+        $latest = $txts | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+        Write-Host "Inspecting: $($latest.FullName)" -ForegroundColor Cyan
+        $lines = Get-Content $latest.FullName -ErrorAction SilentlyContinue
+        $snippet = $lines | Select-Object -Last 60
+        $snippet | Out-File -Append -FilePath $fixFile
 
-            # detect patterns
-            if ($joined -match "GPG_PRIVATE_KEY" -or $joined -match "gpg: .*no secret key" -or $joined -match "no secret key") {
-                "Detected GPG/secret issue in run $($r.id)" | Out-File -Append -FilePath $fixFile
-                "Suggested: set secret GPG_PRIVATE_KEY and optionally GPG_PASSPHRASE via gh secret set or web UI" | Out-File -Append -FilePath $fixFile
-                "Example (local):`n$g = Get-Content -Raw 'C:\path\to\gpg.key'; gh secret set GPG_PRIVATE_KEY -b $g --repo $repo" | Out-File -Append -FilePath $fixFile
-            }
-            if ($joined -match "github.event.release.tag_name|github.ref_name|tag .*not found") {
-                "Detected tag/ref issue" | Out-File -Append -FilePath $fixFile
-                "Suggested: create/push the expected tag (e.g., git tag -a v0.1.0 -m 'v0.1.0' && git push origin v0.1.0)" | Out-File -Append -FilePath $fixFile
-            }
-            if ($joined -match "rustfmt|cargo fmt --check|formatting" ) {
-                "Detected formatting issue" | Out-File -Append -FilePath $fixFile
-                "Suggested: run 'cargo fmt --all' locally; CI may produce format-fix.patch artifact to review." | Out-File -Append -FilePath $fixFile
-            }
-            if ($joined -match "clippy" -and $joined -match "error: aborting due to") {
-                "Detected clippy errors" | Out-File -Append -FilePath $fixFile
-                "Suggested: inspect clippy-fix.patch artifact or run 'cargo clippy -p ark-wallet-cli --fix -Z unstable-options' locally." | Out-File -Append -FilePath $fixFile
-            }
-            if ($joined -match "permission denied|access denied") {
-                "Detected permission issue; check GITHUB_TOKEN and workflow permissions." | Out-File -Append -FilePath $fixFile
-            }
+        $joined = $snippet -join "`n"
+        $kind = 'unknown'
+        if ($joined -match 'GPG_PRIVATE_KEY' -or $joined -match 'gpg: .*no secret key' -or $joined -match 'no secret key') { $kind = 'missing-gpg' }
+        elseif ($joined -match 'github.event.release.tag_name' -or $joined -match 'github.ref_name' -or $joined -match 'tag .*not found') { $kind = 'tag-mismatch' }
+        elseif ($joined -match 'rustfmt' -or $joined -match 'cargo fmt --check' -or $joined -match 'formatting') { $kind = 'fmt' }
+        elseif ($joined -match 'clippy' -and $joined -match 'error:') { $kind = 'clippy' }
+        elseif ($joined -match 'permission denied' -or $joined -match 'access denied') { $kind = 'permission' }
 
-            # attempt to apply format/clippy patches if present in extracted dir and AutoApplyPatches set
-            $patches = Get-ChildItem $exDir -Recurse -Include 'format-fix.patch','clippy-fix.patch' -File -ErrorAction SilentlyContinue
-            if ($AutoApplyPatches -and $patches) {
+        Write-Host "Detected: $kind" -ForegroundColor Magenta
+        switch ($kind) {
+            'missing-gpg' {
+                Write-Host "Suggestion: add GPG_PRIVATE_KEY and GPG_PASSPHRASE via gh secret set. Example:" -ForegroundColor Green
+                Write-Host "`$gpg = Get-Content -Raw 'C:\secure\gpg_private.key' ; gh secret set GPG_PRIVATE_KEY --body `$gpg --repo '$repo'"
+                Write-Host "gh secret set GPG_PASSPHRASE --body (Get-Content -Raw 'C:\secure\gpg_pass.txt') --repo '$repo'"
+            }
+            'tag-mismatch' {
+                Write-Host "Suggestion: create/push expected tag. Example:" -ForegroundColor Green
+                Write-Host "git tag -a v0.1.0 -m 'v0.1.0' ; git push origin v0.1.0"
+            }
+            'fmt' {
+                Write-Host "Suggestion: run 'cargo fmt --all' locally, or apply CI artifact 'format-fix.patch' if present." -ForegroundColor Green
+                $patch = Get-ChildItem $runDir -Recurse -Filter 'format-fix.patch' -ErrorAction SilentlyContinue | Select-Object -First 1
+                if ($patch) { Write-Host "Patch available: $($patch.FullName) -- can apply via 'git apply --index <patch>'" }
+            }
+            'clippy' {
+                Write-Host "Suggestion: run 'cargo clippy -p ark-wallet-cli --fix -Z unstable-options' locally, inspect and commit fixes." -ForegroundColor Green
+                $patch = Get-ChildItem $runDir -Recurse -Filter 'clippy-fix.patch' -ErrorAction SilentlyContinue | Select-Object -First 1
+                if ($patch) { Write-Host "Patch available: $($patch.FullName) -- can apply via 'git apply --index <patch>'" }
+            }
+            default {
+                Write-Host "Unknown issue: showing last 60 lines for manual inspection:" -ForegroundColor Yellow
+                $snippet | ForEach-Object { Write-Host $_ }
+            }
+        }
+
+        # conservative: do not auto-apply or push when DryRun=true
+        if (-not $DryRun) {
+            # prompt to apply patch if present
+            $patches = Get-ChildItem $runDir -Recurse -Include 'format-fix.patch','clippy-fix.patch' -File -ErrorAction SilentlyContinue
+            if ($patches) {
                 foreach ($p in $patches) {
-                    Write-Host "Found patch artifact $($p.FullName). Attempting to apply..." -ForegroundColor Cyan
-                    try {
-                        git apply $p.FullName
+                    Write-Host "Found patch: $($p.FullName)." -ForegroundColor Cyan
+                    $ans = Read-Host "Apply patch and create branch+PR? (yes/no)"
+                    if ($ans -eq 'yes') {
+                        git checkout -b "fix/ci-$($r.databaseId)"
+                        git apply --index $p.FullName
                         git add -A
-                        try {
-                            git commit -m "ci: apply patch $($p.Name) from CI triage"
-                        } catch {
-                            Write-Host "No commit created; maybe no changes" -ForegroundColor Yellow
-                        }
-                        # force push prompt
-                        $ok = Read-Host "Patch applied locally. Force-push branch $branch? (yes/no)"
-                        if ($ok -eq 'yes') {
-                            git push --force-with-lease origin $branch
-                        } else { Write-Host "Skipping push" }
-                    } catch {
-                        Write-Host "Failed to apply patch $($p.Name): $_" -ForegroundColor Red
-                    }
+                        git commit -m "ci: apply patch $($p.Name) from run $($r.databaseId)"
+                        git push origin HEAD
+                        gh pr create --repo $repo --title "ci: patch from run $($r.databaseId)" --body "Auto-applied patch" --head "fix/ci-$($r.databaseId)" --base main
+                        git checkout $branch
+                    } else { Write-Host "Skipped applying patch" }
                 }
             }
 
-            # after local remediation attempt, optionally rerun the workflow
-            $rerun = Read-Host "Rerun this workflow run $($r.id)? (yes/no/skip-all)"
-            if ($rerun -eq 'yes') {
-                gh run rerun $($r.id) --repo $repo
-                Write-Host "Rerun requested for run $($r.id)" -ForegroundColor Green
-            } elseif ($rerun -eq 'skip-all') {
-                Write-Host "Skipping reruns for remaining runs" -ForegroundColor Yellow
-                break 2
-            } else {
-                Write-Host "Skipping rerun for this run" -ForegroundColor Yellow
-            }
+            # ask about rerun
+            $rr = Read-Host "Rerun this workflow run $($r.databaseId)? (yes/no)"
+            if ($rr -eq 'yes') { gh run rerun $($r.databaseId) --repo $repo }
         }
     }
-    # small pause before next loop
-    Start-Sleep -Seconds 6
+
+    if ($DryRun) {
+        Write-Host "DryRun mode: finished one inspection loop. No destructive actions were performed." -ForegroundColor Yellow
+        break
+    }
+
+    # small wait before next attempt
+    Start-Sleep -Seconds 8
 }
 
-Write-Host "Remediation loop complete. See $fixFile for details." -ForegroundColor Green
+Write-Host "Remediation loop complete. See $fixFile for collected diagnostics." -ForegroundColor Green
