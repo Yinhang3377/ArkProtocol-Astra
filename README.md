@@ -6,6 +6,7 @@
 - Sensitive buffers (keys, nonces) are zeroized using the `zeroize` crate for memory safety.
 - Usage: Prepare an envelope with `hot_prepare_envelope`, decrypt with `hot_decrypt_envelope`.
 - Next: CLI subcommands for prepare/broadcast (planned).
+ - Next: CLI subcommands for prepare/decrypt (implemented in this branch).
 
 
 Notes
@@ -54,3 +55,65 @@ cargo run --example envelope_demo --package ark-wallet-cli
 ```
 
 Note: the example uses a fixed test mnemonic and is intended for local testing only. Do not use this mnemonic in production.
+
+### CLI Usage
+
+- Prepare: `ark-wallet prepare --mnemonic "your mnemonic" --file tx.json --json`
+	- Outputs JSON with `envelope` and `key_b64`. Transfer `key_b64` out-of-band (QR) when possible.
+- Decrypt: `ark-wallet decrypt --envelope "$(cat envelope.json)" --key-b64 "your-key" --json`
+	- Outputs the signed JSON. Always zeroize or securely erase the ephemeral key after use.
+
+Example (run the demo example in this repo):
+
+```bash
+cargo run --example envelope_demo --package ark-wallet-cli
+```
+
+Security notes:
+
+- The ephemeral symmetric key (base64 `key_b64`) must be treated as highly sensitive. Prefer out-of-band transport (QR) from signer->broadcaster. Including the key in a relay or public transport weakens the threat model.
+- The implementation zeroizes derived private keys, the ephemeral symmetric key, nonces, and signed JSON buffers where practical. However, zeroization is a best-effort mitigation — avoid swapping/paging and consider platform-specific secure memory when operating at high threat levels.
+- Never paste or transmit `key_b64` over untrusted channels.
+
+#### Quick start (concrete example)
+
+Create a minimal `tx.json` in the current directory:
+
+```json
+{
+	"to": "addr",
+	"amount": 100
+}
+```
+
+Linux / macOS (bash) example using `jq`:
+
+```bash
+# Run prepare once and capture the JSON output
+OUT=$(ark-wallet prepare --mnemonic "your mnemonic" --file tx.json --json)
+# Extract envelope and key into files
+echo "$OUT" | jq -r '.envelope' > envelope.json
+echo "$OUT" | jq -r '.key_b64' > key.b64
+
+# Decrypt using the extracted envelope and key
+ark-wallet decrypt --envelope "$(cat envelope.json)" --key-b64 "$(cat key.b64)" --json
+```
+
+PowerShell example (Windows):
+
+```powershell
+# Prepare and save envelope + key to files
+$out = ark-wallet prepare --mnemonic "your mnemonic" --file tx.json --json | ConvertFrom-Json
+$out.envelope | Out-File -FilePath .\envelope.json -Encoding utf8
+$out.key_b64 | Out-File -FilePath .\key.b64 -Encoding utf8
+
+# Decrypt
+$env = Get-Content .\envelope.json -Raw
+$key = Get-Content .\key.b64 -Raw
+ark-wallet decrypt --envelope $env --key-b64 $key --json
+```
+
+Notes:
+
+- Prefer transferring `key_b64` by QR or other secure OOB channel rather than storing it on disk.
+- Capture the `prepare` JSON once and extract both `envelope` and `key_b64` from that single output (avoid calling `prepare` twice).
