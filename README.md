@@ -42,3 +42,15 @@ ephemeral.zeroize();
 - Sensitive data (derived private keys, ephemeral symmetric key and nonces, signed JSON) are zeroized in memory using the `zeroize` crate.
 
 See implementation in `crates/ark-wallet-cli/src/cli.rs` for `hot_prepare_envelope`, `hot_decrypt_envelope` and associated tests.
+
+### Example: envelope_demo
+
+An example program is included at `examples/envelope_demo.rs`. It demonstrates preparing an AES-GCM envelope from a hot-sign mnemonic and decrypting it again (test/demo only).
+
+Run the example with:
+
+```bash
+cargo run --example envelope_demo --package ark-wallet-cli
+```
+
+Note: the example uses a fixed test mnemonic and is intended for local testing only. Do not use this mnemonic in production.
