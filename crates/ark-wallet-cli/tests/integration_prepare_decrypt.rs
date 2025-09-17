@@ -1,4 +1,4 @@
-use ark_wallet_cli::cli::{ hot_prepare_envelope, hot_decrypt_envelope, Tx };
+use ark_wallet_cli::cli::{hot_decrypt_envelope, hot_prepare_envelope, Tx};
 use zeroize::Zeroize;
 
 #[test]

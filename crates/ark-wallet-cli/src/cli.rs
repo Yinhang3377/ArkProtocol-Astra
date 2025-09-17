@@ -15,14 +15,22 @@ pub enum Mode {
     Cold,
     Hot,
 }
-
 impl Mode {
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Result<Mode> {
         match s {
             "cold" => Ok(Mode::Cold),
             "hot" => Ok(Mode::Hot),
-            _ => anyhow::bail!("unknown mode: {}", s),
+            _ => Err(anyhow::anyhow!("invalid mode: {}", s)),
         }
+    }
+}
+
+impl std::str::FromStr for Mode {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        Mode::from_str(s)
     }
 }
 
