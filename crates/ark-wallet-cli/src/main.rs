@@ -572,7 +572,7 @@ fn run() -> anyhow::Result<()> {
                         anyhow::bail!("either --mnemonic or --mnemonic-file is required")
                     };
 
-                    let (priv32, pk33, _) = wallet::hd::derive_priv_from_mnemonic(
+                    let (priv32, pk33) = wallet::hd::derive_priv_from_mnemonic(
                         lang, // 已解析的 Language
                         &mn_text,
                         passphrase.as_deref().unwrap_or(""),

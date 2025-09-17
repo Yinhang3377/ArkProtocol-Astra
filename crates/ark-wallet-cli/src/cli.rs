@@ -97,7 +97,7 @@ pub fn sign(
         Mode::Hot => {
             let m = mnemonic.ok_or_else(|| anyhow::anyhow!("mnemonic required for hot mode"))?;
             // derive private key from mnemonic (demo uses wallet::hd convenience)
-            let (priv32, _pk33, _path) = crate::wallet::hd::derive_priv_from_mnemonic(
+            let (priv32, _pk33) = crate::wallet::hd::derive_priv_from_mnemonic(
                 bip39::Language::English,
                 m,
                 "",
