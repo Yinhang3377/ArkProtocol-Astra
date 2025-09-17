@@ -10,6 +10,7 @@ use bip32::{DerivationPath, XPrv};
 use bip39::{Language, Mnemonic};
 use k256::ecdsa::SigningKey;
 use std::result::Result as StdResult;
+use zeroize::Zeroizing;
 
 /// 从助记词派生私钥与公钥（示例）
 /// - 参数：
@@ -24,14 +25,15 @@ pub fn derive_priv_from_mnemonic(
     mnemonic_text: &str,
     passphrase: &str,
     path: &str,
-) -> StdResult<([u8; 32], [u8; 33], String), SecurityError> {
+) -> StdResult<([u8; 32], [u8; 33]), SecurityError> {
     let m = Mnemonic::parse_in(lang, mnemonic_text)
         .map_err(|e| SecurityError::Parse(format!("bip39 parse error: {}", e)))?;
-    let seed = m.to_seed(passphrase);
+    // Wrap seed in Zeroizing so it is cleared on drop
+    let seed = Zeroizing::new(m.to_seed(passphrase));
     let dp: DerivationPath = path
         .parse()
         .map_err(|e| SecurityError::Parse(format!("derivation path parse error: {}", e)))?;
-    let xprv = XPrv::derive_from_path(seed, &dp)
+    let xprv = XPrv::derive_from_path(seed.as_ref(), &dp)
         .map_err(|e| SecurityError::Parse(format!("xprv derive error: {}", e)))?;
 
     // private_key().to_bytes() -> GenericArray -> 拷贝到 [u8;32]
@@ -44,7 +46,8 @@ pub fn derive_priv_from_mnemonic(
     let mut pk33 = [0u8; 33];
     pk33.copy_from_slice(&pk);
 
-    Ok((priv32, pk33, m.to_string()))
+    // Attempt to drop/zeroize seed (Zeroizing will clear on drop). Do not return mnemonic text.
+    Ok((priv32, pk33))
 }
 
 /// 由 32 字节私钥计算压缩公钥（33 字节）。
@@ -71,8 +74,7 @@ mod tests {
         let mn =
             "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
         let path = "m/44'/7777'/0'/0/0";
-        let (priv32, pk33, _m) =
-            derive_priv_from_mnemonic(Language::English, mn, "", path).unwrap();
+        let (priv32, pk33) = derive_priv_from_mnemonic(Language::English, mn, "", path).unwrap();
 
         let pk_from_priv = pubkey_from_privkey_secp256k1(&priv32).unwrap();
         assert_eq!(pk33, pk_from_priv);
@@ -81,5 +83,27 @@ mod tests {
         let addr1 = address::from_pubkey_b58check(&pk33);
         let addr2 = address::from_pubkey_b58check(&pk_from_priv);
         assert_eq!(addr1, addr2);
+    }
+
+    #[test]
+    fn zeroize_regression_demo() {
+        use zeroize::{Zeroize, Zeroizing};
+        // Create a buffer and wrap in Zeroizing, fill it with non-zero bytes
+        let mut buf = [0u8; 32];
+        for i in 0..32 {
+            buf[i] = (i as u8).wrapping_add(1);
+        }
+        let mut z = Zeroizing::new(buf);
+        // Ensure buffer contains non-zero data
+        assert!(z.iter().any(|&b| b != 0));
+        // Explicitly zeroize by dropping the wrapper
+        drop(z);
+        // We cannot safely inspect the dropped memory, but this regression test
+        // documents expected behavior and will fail if Zeroizing semantics are
+        // removed. For additional verification, ensure Zeroizing::zeroize works
+        // on an in-scope buffer:
+        let mut buf2 = Zeroizing::new([0xaau8; 32]);
+        buf2.zeroize();
+        assert!(buf2.iter().all(|&b| b == 0));
     }
 }
