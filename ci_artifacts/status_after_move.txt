@@ -1,0 +1,9 @@
+﻿ D ci_artifacts/rebase_retry.out
+ D ci_artifacts/resolve_and_rebase_start.log
+?? ci_artifacts/status_after_move.txt
+?? ci_artifacts_tmp_20250918000138/checkout_after_stash.out
+?? ci_artifacts_tmp_20250918000138/final_head_after_stash.txt
+?? ci_artifacts_tmp_20250918000138/rebase_retry.out
+?? ci_artifacts_tmp_20250918000138/stash_list_after_attach.txt
+?? ci_artifacts_tmp_20250918000138/stash_push_attach.out
+?? ci_artifacts_tmp_20250918000138/status_before_move.txt
