@@ -20,6 +20,14 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+      - name: Install OpenSSL on macOS
+        if: runner.os == 'macOS'
+        run: |
+          brew install openssl@3
+          echo LDFLAGS=-L/opt/homebrew/opt/openssl@3/lib >> $GITHUB_ENV
+          echo CFLAGS=-I/opt/homebrew/opt/openssl@3/include >> $GITHUB_ENV
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: 1
       - name: Cargo fmt
         run: cargo fmt --all -- --check
       - name: Clippy
@@ -33,6 +41,14 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.85.0
       - uses: Swatinem/rust-cache@v2
+      - name: Install OpenSSL on macOS
+        if: runner.os == 'macOS'
+        run: |
+          brew install openssl@3
+          echo LDFLAGS=-L/opt/homebrew/opt/openssl@3/lib >> $GITHUB_ENV
+          echo CFLAGS=-I/opt/homebrew/opt/openssl@3/include >> $GITHUB_ENV
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: 1
       - run: cargo build -p ark-wallet-cli
 
   audit:
