@@ -75,7 +75,7 @@ pub fn sign(
         Mode::Cold => {
             let (s1, s2) = shards.ok_or_else(|| anyhow::anyhow!("shards required for cold mode"))?;
             // local demo of combining shards -> derive 32-byte key -> sign
-            use sha2::{Digest, Sha256};
+            use sha2::{ Digest, Sha256 };
             let mut hasher = Sha256::new();
             hasher.update(s1);
             hasher.update(s2);
