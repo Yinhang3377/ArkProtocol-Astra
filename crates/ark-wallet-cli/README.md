@@ -79,3 +79,61 @@ explicit written permission from the author.
 - git push
 
 下次继续时，我会按此清单推进（从 KDF 校验与 Base58Check 接入开始）。
+
+## macOS ad-hoc codesign
+
+在 macOS 上对可执行二进制进行临时签名以通过系统完整性检查（不需要 Apple 开发者账号），可使用 ad-hoc 签名：
+
+```bash
+codesign --force --deep --sign - wang-wallet-v1.0.0-macos
+```
+
+这是一个临时签名，仅用于通过 macOS 的基本完整性/权限检查；不是 Apple 官方发布签名，用户在严格的安全环境下仍应当依赖 GPG 签名或官方 notarization 流程。
+
+## Binary downloads — GPG 验证
+
+发布的二进制文件均附带 GPG 签名（ASCII detach-sign）。为确保下载的二进制与校验和未被篡改，请按以下步骤验证签名：
+
+1. 从 Release 页面或仓库 `doc/keys/` 下载发布方的公钥文件（示例占位符 `pub.asc`）。
+
+2. 在你的机器上导入公钥并验证签名（下面使用确切的资产文件名）：
+
+```powershell
+# 导入发布公钥（把 pub.asc 替换为实际公钥文件名，例如 release-signing-pubkey.asc）
+gpg --import pub.asc
+
+# 验证主 zip 与签名
+gpg --verify wang-wallet-v1.0.0.zip.asc wang-wallet-v1.0.0.zip
+gpg --verify wang-wallet-v1.0.0-bin.zip.asc wang-wallet-v1.0.0-bin.zip
+
+# 验证 checksum 文件的签名（如果提供）
+gpg --verify wang-wallet-v1.0.0.zip.sha256.asc wang-wallet-v1.0.0.zip.sha256
+gpg --verify wang-wallet-v1.0.0.zip.sha512.asc wang-wallet-v1.0.0.zip.sha512
+gpg --verify wang-wallet-v1.0.0-bin.zip.sha256.asc wang-wallet-v1.0.0-bin.zip.sha256
+gpg --verify wang-wallet-v1.0.0-bin.zip.sha512.asc wang-wallet-v1.0.0-bin.zip.sha512
+```
+
+预期输出示例（验证成功时）：
+
+```
+gpg: Signature made <date> using RSA key ID <KEYID>
+gpg: Good signature from "Your Name <you@example.com>"
+```
+
+如果验证失败，gpg 会指出错误（例如公钥缺失或签名不匹配）。请确保你导入的是发布者的真实公钥（可通过 Release notes 或项目仓库中的 `doc/keys` 验证指纹）。
+
+如果 gpg 报错 "no public key"，请先从 Release 页面复制发布者的公钥块，保存为 `pub.asc`，然后运行 `gpg --import pub.asc` 后再重新验证。
+
+如果你本地没有发布者的公钥，可以直接从 Release 下载并导入（示例使用 gh CLI）：
+
+```powershell
+# 从 Release 下载公钥并导入（把 v1.0.0 替换为实际 tag）
+gh release download v1.0.0 --repo Yinhang3377/ArkProtocol-Astra --pattern 'release-signing-pubkey.asc' --dir .
+gpg --import release-signing-pubkey.asc
+
+# 然后再运行验证命令
+gpg --verify wang-wallet-v1.0.0.zip.asc wang-wallet-v1.0.0.zip
+```
+
+如果没有 gh，也可以用 curl/wget 下载 Release asset 的 URL（不推荐，除非你能确认 URL 与来源）。
+
