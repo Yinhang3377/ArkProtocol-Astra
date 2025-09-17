@@ -1,0 +1,96 @@
+name: Sign and upload release assets
+on:
+  release:
+    types: [published]
+
+jobs:
+  sign-and-upload:
+    name: Sign and upload release assets
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gnupg2 pinentry-curses curl
+
+      - name: Setup gh CLI
+        uses: cli/gh-action@v2
+
+      - name: Import GPG private key
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GPG_PRIVATE_KEY:-}" ]; then
+            echo "GPG_PRIVATE_KEY secret is empty. Abort." >&2
+            exit 1
+          fi
+          # Import key
+          echo "$GPG_PRIVATE_KEY" | gpg --batch --import
+          echo "Imported secret keys:"
+          gpg --list-secret-keys --keyid-format LONG
+
+      - name: Configure GPG to use loopback pinentry (if passphrase protected)
+        env:
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: |
+          # Enable loopback pinentry for non-interactive passphrase supply
+          mkdir -p "$HOME/.gnupg"
+          # ensure decent perms
+          chmod 700 "$HOME/.gnupg"
+          # Create gpg-agent.conf to allow loopback
+          echo "allow-loopback-pinentry" >> "$HOME/.gnupg/gpg-agent.conf"
+          echo "pinentry-program /usr/bin/pinentry-curses" >> "$HOME/.gnupg/gpg-agent.conf"
+          # restart gpg-agent
+          gpgconf --kill gpg-agent || true
+          gpgconf --launch gpg-agent || true
+
+      - name: Download release assets
+        run: |
+          TAG=${{ github.event.release.tag_name }}
+          mkdir -p artifacts
+          gh release download "$TAG" --repo "${{ github.repository }}" --dir artifacts
+
+      - name: Sign assets and upload signatures
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          cd artifacts
+          for f in *; do
+            # skip signature files
+            case "$f" in
+              *.asc|*.sig) echo "Skipping existing signature $f"; continue ;;
+            esac
+            echo "Signing $f"
+            if [ -n "${GPG_PASSPHRASE:-}" ]; then
+              # use loopback pinentry to supply passphrase non-interactively
+              echo "$GPG_PASSPHRASE" | gpg --batch --yes --pinentry-mode loopback --passphrase-fd 0 --armor --detach-sign --output "${f}.asc" "$f"
+            else
+              gpg --batch --yes --armor --detach-sign --output "${f}.asc" "$f"
+            fi
+            echo "Uploading ${f}.asc"
+            gh release upload "$TAG" "${f}.asc" --repo "${{ github.repository }}"
+          done
+
+      - name: Cleanup imported keys
+        run: |
+          set -euo pipefail
+          echo "Cleaning up imported keys"
+          # Remove secret and public keys imported earlier
+          for key in $(gpg --list-secret-keys --with-colons | awk -F: '/^sec/ {print $5}'); do
+            if [ -n "$key" ]; then
+              echo "Deleting secret key $key"
+              gpg --batch --yes --delete-secret-keys "$key" || true
+              echo "Deleting public key $key"
+              gpg --batch --yes --delete-keys "$key" || true
+            fi
+          done
+          echo "Final key list (should be empty):"
+          gpg --list-secret-keys || true
