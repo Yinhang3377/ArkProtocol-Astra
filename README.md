@@ -42,6 +42,16 @@ ephemeral.zeroize();
 - Unit test `test_hot_envelope_roundtrip` (in `crates/ark-wallet-cli`) verifies AES-GCM envelope round-trip.
 - Sensitive data (derived private keys, ephemeral symmetric key and nonces, signed JSON) are zeroized in memory using the `zeroize` crate.
 
+Security and side-channel notes
+------------------------------
+
+- Zeroization is a best-effort mitigation. It reduces the window in which sensitive bytes remain in process memory, but it does not protect against all classes of attacks (for example, if the OS swaps memory to disk, a kernel compromise, or if hardware side-channels are present).
+- Avoid running this CLI on untrusted or instrumented hosts when handling production keys. Prefer hardware-backed key stores (HSMs or secure elements) when available.
+- Be careful with constant-time and side-channel resistant code paths: ECDSA signing libraries used here are considered safe for typical use, but if your threat model includes local attackers with physical access or precise timing capabilities, consider blinding and constant-time primitives / audited cryptography crates.
+- Do not rely solely on zeroize to prevent leaks; also harden the execution environment: disable swap, use secure OS configurations, limit process privileges, and prefer ephemeral isolated environments for signing operations.
+
+If you need a higher-assurance setup, consider using specialized memory-safe tooling or dedicated hardware modules and review this code with a security auditor.
+
 See implementation in `crates/ark-wallet-cli/src/cli.rs` for `hot_prepare_envelope`, `hot_decrypt_envelope` and associated tests.
 
 ### Example: envelope_demo
