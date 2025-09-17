@@ -18,12 +18,23 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y gnupg2 pinentry-curses curl
 
-      - name: Setup gh CLI
-        uses: cli/gh-action@v2
+      - name: Setup Node and install gh CLI
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install gh CLI via npm
+        run: |
+          npm install -g @actions/cli || true
+          # fallback: try to install GitHub CLI via apt if npm package not available
+          if ! command -v gh >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y gh || true
+          fi
 
       - name: Import GPG private key
         env:
-          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY || '' }}
         run: |
           set -euo pipefail
           if [ -z "${GPG_PRIVATE_KEY:-}" ]; then
@@ -54,7 +65,7 @@ jobs:
         run: |
           TAG=${{ github.event.release.tag_name }}
           mkdir -p artifacts
-          gh release download "$TAG" --repo "${{ github.repository }}" --dir artifacts
+          gh release download "v${{ github.event.release.tag_name }}" --dir artifacts || gh release download "$TAG" --repo "${{ github.repository }}" --dir artifacts
 
       - name: Sign assets and upload signatures
         env:
