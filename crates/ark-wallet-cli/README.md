@@ -25,6 +25,8 @@ ark-wallet keystore export --file keystore.json --password "pwd" --out-priv priv
 C:\path\to\project\priv.hex
 ```
 
+注意：热签名模式（`--mode hot`）现在支持将已签名并用 AES-256-GCM 加密的包直接 POST 到一个中继（使用 `--relay <url>`），中继仅负责转发/广播密文，不会解密或持久化明文，私钥不会离开本设备。
+
 - JSON 模式：stdout 打印包含 `file` 和 `privkey_hex` 的 JSON（若设置 `--out-priv` 也会写文件）。
 ```powershell
 ark-wallet --json keystore export --file keystore.json --password "pwd" --out-priv priv.hex
