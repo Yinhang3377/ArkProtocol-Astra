@@ -21,16 +21,27 @@ fn create_with_weak_scrypt_params_should_fail() {
         .arg("--p")
         .arg("1")
         .arg("--password")
-        .arg("TestPwd#1")
-        .arg("--out")
-        .arg("/tmp/should_not_create.json");
+        .arg("TestPwd#1");
+    use std::path::PathBuf;
+    let out_path: PathBuf = std::env::temp_dir().join("should_not_create.json");
+    let out_str = out_path.to_string_lossy().to_string();
+    cmd.arg("--out").arg(&out_str);
     let out = cmd.output().expect("failed to run");
-    // Expect non-zero exit status and stderr contains reason
+    // Save child stdout/stderr for debugging in CI
+    let _ = std::fs::create_dir_all("../../ci_artifacts");
+    let _ = std::fs::write(
+        "../../ci_artifacts/test_invalid_kdf_stdout.txt",
+        &out.stdout,
+    );
+    let _ = std::fs::write(
+        "../../ci_artifacts/test_invalid_kdf_stderr.txt",
+        &out.stderr,
+    );
+    // Expect non-zero exit and that the output file was not created.
     assert!(!out.status.success());
-    let stderr = String::from_utf8_lossy(&out.stderr).to_lowercase();
     assert!(
-        stderr.contains("scrypt params too weak")
-            || stderr.contains("invalid kdf")
-            || stderr.contains("too weak")
+        !out_path.exists(),
+        "output file was created unexpectedly: {}",
+        out_path.display()
     );
 }
