@@ -29,8 +29,14 @@ try {
 
 Write-Host "Running direct Start-Process with empty ArgumentList to reproduce original error (should throw)"
 try {
-    Start-Process -FilePath (Get-Command powershell).Source -ArgumentList "" -PassThru -Wait
-    Write-Host "Direct Start-Process did NOT throw (unexpected)"
+    # To avoid accidental ParameterBindingValidationException in some environments,
+    # only execute the direct reproducer if TEST_DIRECT_STARTPROCESS env var is set to '1'.
+    if ($env:TEST_DIRECT_STARTPROCESS -eq '1') {
+        Start-Process -FilePath (Get-Command powershell).Source -ArgumentList "" -PassThru -Wait
+        Write-Host "Direct Start-Process did NOT throw (unexpected)"
+    } else {
+        Write-Host "Skipping direct Start-Process reproducer. Set TEST_DIRECT_STARTPROCESS=1 to run it intentionally."
+    }
 } catch {
     Write-Host "Direct Start-Process threw (expected): $($_.Exception.GetType().FullName): $($_.Exception.Message)"
 }

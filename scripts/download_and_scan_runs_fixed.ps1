@@ -17,8 +17,20 @@ foreach($r in $runs){
     $summary += [PSCustomObject]@{ databaseId=$db; number=$num; workflow=$wf; file=$file }
 }
 
-# Patterns to look for (include English and Chinese variants)
-$patterns = @('ParameterBindingValidationException','Start-Process','ArgumentList','鏃犳硶瀵瑰弬鏁?,'鍙傛暟涓?Null 鎴栫┖')
+# Patterns to look for (include English and Chinese variants).
+# Build Chinese fragments from Unicode code points to avoid file-encoding/quoting issues when
+# running under PowerShell 5.1 on Windows (scripts in repo may be UTF-16LE).
+$paramWithWei = -join ([char[]](0x53C2,0x6570,0x4E3A)) # 参数为
+$orEmpty = -join ([char[]](0x6216,0x7A7A))            # 或空
+$patterns = @(
+    'ParameterBindingValidationException',
+    'Start-Process',
+    'ArgumentList',
+    'Argument list',
+    'Null or empty',
+    $paramWithWei,
+    $orEmpty
+)
 
 # Accumulator for matches (avoid using automatic $matches variable)
 $scanMatches = @()
