@@ -27,6 +27,10 @@ fn non_tty_password_stdin_flow() {
     cmd.write_stdin("TestPwd#1\n").assert().success();
 
     // Ensure the keystore file was created in the crate directory and clean up.
-    assert!(created.exists(), "expected keystore file to be created: {:?}", created);
+    assert!(
+        created.exists(),
+        "expected keystore file to be created: {:?}",
+        created
+    );
     let _ = std::fs::remove_file(created);
 }
