@@ -12,13 +12,14 @@ What it does (safe mode):
  - Attempts to classify common failures and writes suggested fixes to ci-fixes.txt
  - Optionally writes a fix script (do not run without review)
 
-This script requires `gh` CLI available and authenticated.
+This script requires the `gh` CLI to be available and authenticated.
 #>
 param(
     [string]$RepoOwner = 'Yinhang3377',
     [string]$RepoName = 'ArkProtocol-Astra',
     [int]$Limit = 10,
-    [switch]$AutoAbortMerge
+    [switch]$AutoAbortMerge,
+    [switch]$DryRun
 )
 
 $repo = "$RepoOwner/$RepoName"
@@ -75,14 +76,14 @@ foreach ($r in $fails) {
     Write-Host "Downloading logs for run $($r.id) ..." -ForegroundColor Cyan
     gh run download $($r.id) --repo $repo -D $logDir 2>$null
 
-    # run the GH run log scanner only if the downloaded run log exists and is recent (within 5 minutes)
+    # run the GH run log scanner only if the downloaded run log exists and is readable
     try {
         # find the downloaded run log file (first match) and pass it directly to the scanner
         $runLogDir = Join-Path $PWD 'ci_artifacts\gh_runs'
         $match = Get-ChildItem -LiteralPath $runLogDir -Filter "run_$($r.id)*.log" -File -ErrorAction SilentlyContinue | Select-Object -First 1
         if ($match) {
             $logPath = $match.FullName
-            # try to read the file; retry up to 2 times (3 attempts total) with 3s backoff if locked/not ready
+            # try to read the file; retry up to SCAN_RETRY times with SCAN_BACKOFF backoff if locked/not ready
             $maxAttempts = if ($env:SCAN_RETRY) { [int]$env:SCAN_RETRY } else { 3 }
             $attempt = 0
             $ready = $false
@@ -101,9 +102,28 @@ foreach ($r in $fails) {
             }
 
             $scanner = Join-Path $PSScriptRoot 'scan_gh_run_logs.ps1'
-            if (Test-Path -LiteralPath $scanner) { & $scanner $logPath } else { Write-Host "Scanner not found: $scanner" -ForegroundColor Yellow }
-            # react to scanner result
-            if ($LASTEXITCODE -ne 0) { Write-Host '有问题 跑修复' -ForegroundColor Red; & $PSScriptRoot\ci-remediate.ps1 -RepoOwner $RepoOwner -RepoName $RepoName -Limit 1 -AutoAbortMerge } else { Write-Host '绿了' -ForegroundColor Green }
+            if ($DryRun) {
+                # print which lines would be fixed: read per-run summary json if present
+                $summaryJson = Join-Path $PWD ("ci_artifacts\run_${($r.id)}_summary.json")
+                if (Test-Path -LiteralPath $summaryJson) {
+                    $j = Get-Content -LiteralPath $summaryJson -Raw | ConvertFrom-Json
+                    Write-Host "DryRun: would fix run $($j.runId):" -ForegroundColor Yellow
+                    foreach ($l in $j.lines) { Write-Host "  $($l.file):$($l.line) - $($l.text)" }
+                } else {
+                    Write-Host "DryRun: no per-run JSON, falling back to summary file" -ForegroundColor DarkGray
+                    $sum = Get-Content -LiteralPath (Join-Path $PWD 'ci_artifacts\gh_run_errors_summary.txt') -ErrorAction SilentlyContinue
+                    if ($sum) { Write-Host $sum } else { Write-Host "DryRun: no summary available" }
+                }
+            } else {
+                if (Test-Path -LiteralPath $scanner) { & $scanner $logPath } else { Write-Host "Scanner not found: $scanner" -ForegroundColor Yellow }
+                # react to scanner result
+                if ($LASTEXITCODE -ne 0) {
+                    Write-Host 'Issue found; running remediation' -ForegroundColor Red
+                    & $PSScriptRoot\ci-remediate.ps1 -RepoOwner $RepoOwner -RepoName $RepoName -Limit 1 -AutoAbortMerge
+                } else {
+                    Write-Host 'All green' -ForegroundColor Green
+                }
+            }
         } else {
             Write-Host "No run log found for $($r.id); skipping scanner invocation" -ForegroundColor DarkGray
         }
