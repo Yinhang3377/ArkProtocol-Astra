@@ -7,7 +7,14 @@ if(-not (Test-Path $script)){
 }
 $argString = "-NoProfile -ExecutionPolicy Bypass -File `"$script`" -PrNumber 27 -IntervalSeconds 60 -MaxIterations 0"
 Write-Host "Starting detached PowerShell with args: $argString"
-$proc = Start-Process -FilePath (Get-Command powershell).Source -ArgumentList $argString -WindowStyle Hidden -PassThru
+$psExe = (Get-Command powershell).Source
+# Safely call Start-Process: if $argString is empty or whitespace, do not pass -ArgumentList (PowerShell validates it must be non-empty)
+if ([string]::IsNullOrWhiteSpace($argString)) {
+    Write-Host "Argument list is empty; starting PowerShell without -ArgumentList"
+    $proc = Start-Process -FilePath $psExe -WindowStyle Hidden -PassThru
+} else {
+    $proc = Start-Process -FilePath $psExe -ArgumentList $argString -WindowStyle Hidden -PassThru
+}
 Write-Host "Started process Id=$($proc.Id)"
 # Wait a moment and show whether log exists
 Start-Sleep -Seconds 1

@@ -53,6 +53,28 @@ Function Ensure-GH(){
     try{ Get-Command gh -ErrorAction Stop > $null; return $true } catch { return $false }
 }
 
+# Safe Start-Process wrapper: only pass -ArgumentList when non-empty.
+function Start-Process-Safe {
+    param(
+        [Parameter(Mandatory=$true)] [string] $FilePath,
+        [Parameter(Mandatory=$false)] [object] $ArgumentList,
+        [switch] $NoNewWindow,
+        [switch] $Wait,
+        [switch] $PassThru
+    )
+    $params = @{ FilePath = $FilePath }
+    if ($ArgumentList -ne $null) {
+        # treat empty string or empty array as 'no args'
+        if (-not ([string]::IsNullOrWhiteSpace([string]$ArgumentList))) {
+            $params['ArgumentList'] = $ArgumentList
+        }
+    }
+    if ($NoNewWindow.IsPresent) { $params['NoNewWindow'] = $true }
+    if ($Wait.IsPresent) { $params['Wait'] = $true }
+    if ($PassThru.IsPresent) { $params['PassThru'] = $true }
+    Start-Process @params
+}
+
 if(-not (Ensure-GH)){
     Log "gh CLI not found in PATH. Aborting."
     Exit 2
@@ -122,7 +144,7 @@ while($MaxIterations -eq 0 -or $iter -lt $MaxIterations){
 
             if($logText -match "error: rustfmt.*" -or $logText -match "warning: formatting" -or $logText -match "rustfmt"){
                 Log "Detected rustfmt-related failure. Running 'cargo fmt --all'"
-                Start-Process -FilePath cargo -ArgumentList 'fmt','--all' -NoNewWindow -Wait
+                Start-Process-Safe -FilePath cargo -ArgumentList 'fmt','--all' -NoNewWindow -Wait
                 $actionsTaken += 'cargo fmt'
                 $needsCommit = $true
             }
@@ -130,7 +152,7 @@ while($MaxIterations -eq 0 -or $iter -lt $MaxIterations){
             if($logText -match "clippy" -or $logText -match "warning:" -and $logText -match "clippy"){
                 Log "Detected clippy-related messages. Running 'cargo fix' (conservative)"
                 # cargo fix without --clippy is conservative; may apply suggestions
-                Start-Process -FilePath cargo -ArgumentList 'fix' -NoNewWindow -Wait
+                Start-Process-Safe -FilePath cargo -ArgumentList 'fix' -NoNewWindow -Wait
                 $actionsTaken += 'cargo fix'
                 $needsCommit = $true
             }
