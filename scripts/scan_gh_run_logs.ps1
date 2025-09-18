@@ -118,3 +118,10 @@ foreach ($rid in $matchesByRun.Keys) {
     Write-Output "Wrote JSON summary for run $rid -> $outJsonFile"
     if ($paths.Count -gt 0) { Write-Output "Compressed matched logs for run $rid -> $zipDst" }
 }
+
+# Exit with code 1 if any matches were found, otherwise 0
+if ($matchesByRun.Keys.Count -gt 0) {
+    exit 1
+} else {
+    exit 0
+}

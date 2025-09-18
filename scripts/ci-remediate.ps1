@@ -77,7 +77,7 @@ while ($true) {
             $match = Get-ChildItem -LiteralPath $runLogDir -Filter "run_$($r.id)*.log" -File -ErrorAction SilentlyContinue | Select-Object -First 1
             if ($match) {
                 $logPath = $match.FullName
-                $maxAttempts = 3
+                $maxAttempts = if ($env:SCAN_RETRY) { [int]$env:SCAN_RETRY } else { 3 }
                 $attempt = 0
                 $ready = $false
                 while ($attempt -lt $maxAttempts -and -not $ready) {
@@ -86,7 +86,7 @@ while ($true) {
                         $ready = $true
                     } catch {
                         $attempt++
-                        if ($attempt -lt $maxAttempts) { Start-Sleep -Seconds 3 }
+                        if ($attempt -lt $maxAttempts) { $backoff = if ($env:SCAN_BACKOFF) { [int]$env:SCAN_BACKOFF } else { 3000 }; Start-Sleep -Milliseconds $backoff }
                     }
                 }
                 if (-not $ready) {
@@ -96,6 +96,7 @@ while ($true) {
 
                 $scanner = Join-Path $PSScriptRoot 'scan_gh_run_logs.ps1'
                 if (Test-Path -LiteralPath $scanner) { & $scanner $logPath } else { Write-Host "Scanner not found: $scanner" -ForegroundColor Yellow }
+                if ($LASTEXITCODE -ne 0) { Write-Host 'Scanner reported matches (non-zero exit).'; }
             } else {
                 Write-Host "No run log found for $($r.id); skipping scanner invocation" -ForegroundColor DarkGray
             }
