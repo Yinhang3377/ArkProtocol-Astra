@@ -1,5 +1,6 @@
 # start_detached_auto_fix.ps1
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
+. $scriptDir\lib_process.ps1
 $script = Join-Path $scriptDir 'auto_fix_pr_ci.ps1'
 if(-not (Test-Path $script)){
     Write-Host "Missing script: $script"

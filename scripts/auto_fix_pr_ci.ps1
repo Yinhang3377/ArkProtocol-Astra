@@ -53,7 +53,9 @@ Function Ensure-GH(){
     try{ Get-Command gh -ErrorAction Stop > $null; return $true } catch { return $false }
 }
 
-# Safe Start-Process wrapper: only pass -ArgumentList when non-empty.
+. $PSScriptRoot\lib_process.ps1
+
+# Safe Start-Process wrapper is provided by lib_process.ps1
 function Start-Process-Safe {
     param(
         [Parameter(Mandatory=$true)] [string] $FilePath,

@@ -1,4 +1,6 @@
 # Test Start-Process-Safe wrapper
+. $PSScriptRoot\lib_process.ps1
+
 function Start-Process-Safe {
     param(
         [Parameter(Mandatory=$true)] [string] $FilePath,
