@@ -72,6 +72,18 @@ while ($true) {
         # download logs
         Remove-Item -Recurse -Force $logDir -ErrorAction SilentlyContinue
         gh run download $($r.id) --repo $repo -D $logDir 2>$null
+        try {
+            $runLogDir = Join-Path $PWD 'ci_artifacts\gh_runs'
+            $match = Get-ChildItem -LiteralPath $runLogDir -Filter "run_$($r.id)*.log" -File -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($match) {
+                $scanner = Join-Path $PSScriptRoot 'scan_gh_run_logs.ps1'
+                if (Test-Path -LiteralPath $scanner) { & $scanner -LogPath $match.FullName } else { Write-Host "Scanner not found: $scanner" -ForegroundColor Yellow }
+            } else {
+                Write-Host "No run log found for $($r.id); skipping scanner invocation" -ForegroundColor DarkGray
+            }
+        } catch {
+            Write-Warning "scan_gh_run_logs.ps1 invocation failed: $($_.ToString())"
+        }
         Get-ChildItem $logDir -Filter '*.zip' -File -ErrorAction SilentlyContinue | ForEach-Object { Expand-Archive -Path $_.FullName -DestinationPath $exDir -Force }
 
         $txts = Get-ChildItem $exDir -Recurse -Filter '*.txt' -ErrorAction SilentlyContinue

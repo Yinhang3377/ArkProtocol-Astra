@@ -19,27 +19,6 @@ param(
     [string]$RepoName = 'ArkProtocol-Astra',
     [int]$Limit = 10,
     [switch]$AutoAbortMerge
-<#
-ci-triage.ps1
-
-Usage: Run from repo root in PowerShell (VS Code integrated terminal)
-  .\scripts\ci-triage.ps1 -RepoOwner 'Yinhang3377' -RepoName 'ArkProtocol-Astra'
-
-What it does (safe mode):
- - Checks and optionally aborts unfinished merges (asks first)
- - Fetches recent GH Actions runs (limit 10)
- - Finds failed runs and downloads logs
- - Extracts last 20 lines of failing steps
- - Attempts to classify common failures and writes suggested fixes to ci-fixes.txt
- - Optionally writes a fix script (do not run without review)
-
-This script requires `gh` CLI available and authenticated.
-#>
-param(
-    [string]$RepoOwner = 'Yinhang3377',
-    [string]$RepoName = 'ArkProtocol-Astra',
-    [int]$Limit = 10,
-    [switch]$AutoAbortMerge
 )
 
 $repo = "$RepoOwner/$RepoName"
@@ -95,6 +74,21 @@ foreach ($r in $fails) {
     # download run logs
     Write-Host "Downloading logs for run $($r.id) ..." -ForegroundColor Cyan
     gh run download $($r.id) --repo $repo -D $logDir 2>$null
+
+    # run the GH run log scanner only if the downloaded run log exists and is recent (within 5 minutes)
+    try {
+        $runLogPattern = Join-Path $PWD "ci_artifacts\gh_runs\run_$($r.id)*.log"
+        $recent = Get-ChildItem -LiteralPath (Split-Path $runLogPattern) -Filter "run_$($r.id)*.log" -File -ErrorAction SilentlyContinue | Where-Object { $_.LastWriteTime -gt (Get-Date).AddMinutes(-5) }
+        if ($recent) {
+            $logFile = $recent | Select-Object -First 1
+            $scanner = Join-Path $PSScriptRoot 'scan_gh_run_logs.ps1'
+            if (Test-Path -LiteralPath $scanner) { & $scanner -LogPath $logFile.FullName } else { Write-Host "Scanner not found: $scanner" -ForegroundColor Yellow }
+        } else {
+            Write-Host "No run log found for $($r.id); skipping scanner invocation" -ForegroundColor DarkGray
+        }
+    } catch {
+        Write-Warning "scan_gh_run_logs.ps1 invocation failed: $($_.ToString())"
+    }
 
     # expand zips
     Get-ChildItem $logDir -Filter '*.zip' -File -ErrorAction SilentlyContinue | ForEach-Object {

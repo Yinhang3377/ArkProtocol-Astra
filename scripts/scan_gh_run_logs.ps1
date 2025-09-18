@@ -9,11 +9,22 @@ If no matches are found the file will contain the single line:
 
 $ErrorActionPreference = 'Continue'
 
-$runsDir = Join-Path -Path $PSScriptRoot -ChildPath '..\ci_artifacts\gh_runs'
-$runsDir = (Resolve-Path -LiteralPath $runsDir -ErrorAction SilentlyContinue).ProviderPath
-if (-not (Test-Path -LiteralPath $runsDir)) {
-    Write-Error "Runs directory not found: $runsDir"
-    exit 2
+param(
+    [string]$LogPath
+)
+
+# if a specific log path was provided, scan only that; otherwise scan the whole runs dir
+if ($LogPath) {
+    if (-not (Test-Path -LiteralPath $LogPath)) { Write-Warning "Provided LogPath not found: $LogPath"; exit 0 }
+    $filesToScan = @(Get-Item -LiteralPath $LogPath -ErrorAction SilentlyContinue)
+} else {
+    $runsDir = Join-Path -Path $PSScriptRoot -ChildPath '..\ci_artifacts\gh_runs'
+    $runsDir = (Resolve-Path -LiteralPath $runsDir -ErrorAction SilentlyContinue).ProviderPath
+    if (-not (Test-Path -LiteralPath $runsDir)) {
+        Write-Error "Runs directory not found: $runsDir"
+        exit 2
+    }
+    $filesToScan = Get-ChildItem -LiteralPath $runsDir -Filter '*.log' -File -Recurse
 }
 
 $pattern = 'ParameterBindingValidationException|参数为 Null 或空|ArgumentList\s+is\s+null|ArgumentList\s+is\s+empty|ArgumentList\s+is\s+""'
@@ -22,7 +33,7 @@ $outLines = [System.Collections.Generic.List[string]]::new()
 # collect structured matches by run id
 $matchesByRun = @{}
 
-Get-ChildItem -LiteralPath $runsDir -Filter '*.log' -File -Recurse | ForEach-Object {
+$filesToScan | ForEach-Object {
     $file = $_
     try {
         $content = Get-Content -LiteralPath $file.FullName -Raw -ErrorAction Stop
