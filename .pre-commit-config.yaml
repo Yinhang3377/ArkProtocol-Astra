@@ -1,0 +1,14 @@
+repos:
+  - repo: local
+    hooks:
+      - id: rustfmt-auto
+        name: Rust fmt (auto-fix then check)
+        entry: pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\precommit_rustfmt.ps1
+        language: system
+        files: '^crates/.*\.rs$|^src/.*\.rs$|^.*\.rs$'
+      - id: pwsh-lint
+        name: PowerShell lint & Start-Process check
+        entry: pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\precommit_pslint.ps1
+        language: system
+        files: '^scripts/.*\.ps1$|^.*\.ps1$'
+        always_run: true
