@@ -21,14 +21,23 @@ param(
 )
 
 Set-StrictMode -Version Latest
-$gitTop = git rev-parse --show-toplevel 2>$null
-if($LASTEXITCODE -eq 0 -and $gitTop){
-    $RepoRoot = $gitTop.Trim()
+# Prefer using an explicit environment-provided REPO_ROOT when available. This
+# avoids git/cmd encoding issues on Windows where `git rev-parse` may return
+# paths in an encoding that PowerShell misinterprets. If REPO_ROOT is not set,
+# fall back to `git rev-parse` or the script directory.
+if ($env:REPO_ROOT) {
+    $RepoRoot = $env:REPO_ROOT
 } else {
-    # fallback to script parent dir
-    $RepoRoot = Split-Path -Parent $MyInvocation.MyCommand.Definition
+    $gitTop = git rev-parse --show-toplevel 2>$null
+    if($LASTEXITCODE -eq 0 -and $gitTop){
+        $RepoRoot = $gitTop.Trim()
+    } else {
+        # fallback to script parent dir
+        $RepoRoot = Split-Path -Parent $MyInvocation.MyCommand.Definition
+    }
 }
-Push-Location $RepoRoot
+# Use LiteralPath to avoid PowerShell interpreting special characters in paths.
+Push-Location -LiteralPath $RepoRoot
 
 Function Log([string]$s){
     $ts = (Get-Date).ToString('s')
