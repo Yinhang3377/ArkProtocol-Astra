@@ -11,9 +11,9 @@ $psExe = (Get-Command powershell).Source
 # Safely call Start-Process: if $argString is empty or whitespace, do not pass -ArgumentList (PowerShell validates it must be non-empty)
 if ([string]::IsNullOrWhiteSpace($argString)) {
     Write-Host "Argument list is empty; starting PowerShell without -ArgumentList"
-    $proc = Start-Process -FilePath $psExe -WindowStyle Hidden -PassThru
+    $proc = Start-Process-Safe -FilePath $psExe -WindowStyle Hidden -PassThru
 } else {
-    $proc = Start-Process -FilePath $psExe -ArgumentList $argString -WindowStyle Hidden -PassThru
+    $proc = Start-Process-Safe -FilePath $psExe -ArgumentList $argString -WindowStyle Hidden -PassThru
 }
 Write-Host "Started process Id=$($proc.Id)"
 # Wait a moment and show whether log exists
