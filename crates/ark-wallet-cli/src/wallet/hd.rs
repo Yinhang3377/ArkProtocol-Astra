@@ -93,7 +93,7 @@ mod tests {
         for i in 0..32 {
             buf[i] = (i as u8).wrapping_add(1);
         }
-        let mut z = Zeroizing::new(buf);
+        let z = Zeroizing::new(buf);
         // Ensure buffer contains non-zero data
         assert!(z.iter().any(|&b| b != 0));
         // Explicitly zeroize by dropping the wrapper

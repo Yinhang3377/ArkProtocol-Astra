@@ -16,3 +16,4 @@ pwd.txt
 # CI job logs and tmp artifacts
 tmp/
 
+ci_artifacts/

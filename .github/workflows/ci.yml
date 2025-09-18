@@ -32,6 +32,9 @@ jobs:
         run: cargo fmt --all -- --check
       - name: Clippy
         run: cargo clippy -p ark-wallet-cli -- -D warnings
+      - name: Cargo fmt (strict check before tests)
+        shell: bash
+        run: cargo fmt --check --all || exit 1
       - name: Tests
         run: cargo test -p ark-wallet-cli
 

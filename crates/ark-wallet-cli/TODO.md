@@ -1,3 +1,24 @@
+# ark-wallet-cli TODOs and security notes
+
+This file contains short-term TODOs, missing tests and security notes discovered during an automated audit.
+
+Security notes
+- Clearly document threat model for `--json` outputs and `--out-priv` operations. Exporting private keys should be discouraged in production and documented.
+- Document the relay threat model; warn that posting ephemeral keys to untrusted relays weakens security.
+- Recommend default KDF parameters and explain trade-offs; consider stronger defaults for production (increase PBKDF2 iterations / scrypt N).
+
+Suggested tests to add (covered by tests/ but recommended for CI):
+1. keystore_tamper.rs — Negative test: tampered ciphertext should fail decryption (integrity check)
+2. keystore_invalid_nonce.rs — Negative test: invalid base64/nonce should return decode error
+3. invalid_kdf_params_additional.rs — Additional negative KDF parameter tests for CLI paths
+4. non_interactive_password_flow.rs — Simulation of non-TTY password input behavior (document expected behavior)
+
+Other improvements
+- Add a short `docs/security.md` describing best practices and recommended CLI usage in CI.
+- Add explicit CLI examples showing safe workflows (hardware wallet, offline signing, QR envelope flows).
+
+PR policy for auto-fixes
+- Small style fixes (linting, unused mut removal) are safe, but push/merge should be gated by a human review. The audit scripts will not push further changes without explicit confirmation.
 # Ark Wallet CLI 安全与改进待办
 
 进度

@@ -72,6 +72,37 @@ while ($true) {
         # download logs
         Remove-Item -Recurse -Force $logDir -ErrorAction SilentlyContinue
         gh run download $($r.id) --repo $repo -D $logDir 2>$null
+        try {
+            $runLogDir = Join-Path $PWD 'ci_artifacts\gh_runs'
+            $match = Get-ChildItem -LiteralPath $runLogDir -Filter "run_$($r.id)*.log" -File -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($match) {
+                $logPath = $match.FullName
+                $maxAttempts = if ($env:SCAN_RETRY) { [int]$env:SCAN_RETRY } else { 3 }
+                $attempt = 0
+                $ready = $false
+                while ($attempt -lt $maxAttempts -and -not $ready) {
+                    try {
+                        $null = Get-Content -LiteralPath $logPath -Raw -ErrorAction Stop
+                        $ready = $true
+                    } catch {
+                        $attempt++
+                        if ($attempt -lt $maxAttempts) { $backoff = if ($env:SCAN_BACKOFF) { [int]$env:SCAN_BACKOFF } else { 3000 }; Start-Sleep -Milliseconds $backoff }
+                    }
+                }
+                if (-not $ready) {
+                    Write-Error "Run log $logPath not readable after $maxAttempts attempts"
+                    exit 2
+                }
+
+                $scanner = Join-Path $PSScriptRoot 'scan_gh_run_logs.ps1'
+                if (Test-Path -LiteralPath $scanner) { & $scanner $logPath } else { Write-Host "Scanner not found: $scanner" -ForegroundColor Yellow }
+                if ($LASTEXITCODE -ne 0) { Write-Host 'Scanner reported matches (non-zero exit).'; }
+            } else {
+                Write-Host "No run log found for $($r.id); skipping scanner invocation" -ForegroundColor DarkGray
+            }
+        } catch {
+            Write-Warning "scan_gh_run_logs.ps1 invocation failed: $($_.ToString())"
+        }
         Get-ChildItem $logDir -Filter '*.zip' -File -ErrorAction SilentlyContinue | ForEach-Object { Expand-Archive -Path $_.FullName -DestinationPath $exDir -Force }
 
         $txts = Get-ChildItem $exDir -Recurse -Filter '*.txt' -ErrorAction SilentlyContinue
