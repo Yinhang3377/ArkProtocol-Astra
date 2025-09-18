@@ -45,7 +45,7 @@ Get-ChildItem -LiteralPath $runsDir -Filter '*.log' -File -Recurse | ForEach-Obj
             $runId = if ($runMatch.Success) { $runMatch.Groups[1].Value } else { 'unknown' }
             $outLines.Add("Run ${runId}: $($file.Name): line $lineNum - $($m.Value)")
             if (-not $matchesByRun.ContainsKey($runId)) { $matchesByRun[$runId] = @() }
-            $matchesByRun[$runId] += @{ file = $file.Name; line = $lineNum; text = $m.Value }
+            $matchesByRun[$runId] += @{ file = $file.Name; path = $file.FullName; line = $lineNum; text = $m.Value }
         }
     }
 }
@@ -60,18 +60,50 @@ if ($outLines.Count -eq 0) {
 }
 
 # Emit per-run JSON summaries into ../ci_artifacts/
-$artifactsDir = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\ci_artifacts') -ErrorAction SilentlyContinue).ProviderPath
+ $artifactsDir = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\ci_artifacts') -ErrorAction SilentlyContinue).ProviderPath
 if (-not (Test-Path -LiteralPath $artifactsDir)) { New-Item -ItemType Directory -Path $artifactsDir | Out-Null }
+# determine owner/repo from git remote if possible
+$owner = $null; $repoName = $null
+try {
+    $remoteUrl = (git remote get-url origin) -as [string]
+    if ($remoteUrl) {
+        # support git@github.com:owner/repo.git and https://github.com/owner/repo.git
+        $parts = $remoteUrl -split '[/:]'
+        if ($parts.Length -ge 2) {
+            $owner = $parts[-2]
+            $repoName = ($parts[-1] -replace '\.git$','')
+        }
+    }
+} catch { }
 
 foreach ($rid in $matchesByRun.Keys) {
+    $lines = $matchesByRun[$rid]
+    # ensure matches dir exists under ci_artifacts/gh_runs/matches
+    $matchesDir = Join-Path $artifactsDir 'gh_runs\matches'
+    if (-not (Test-Path -LiteralPath $matchesDir)) { New-Item -ItemType Directory -Path $matchesDir -Force | Out-Null }
+
+    # compress matched log files (unique paths)
+    $paths = $lines | ForEach-Object { $_.path } | Select-Object -Unique
+    if ($paths.Count -gt 0) {
+        $zipDst = Join-Path $matchesDir ("run_${rid}.zip")
+        try {
+            Compress-Archive -Path $paths -DestinationPath $zipDst -Force
+        } catch {
+            Write-Warning ("Failed to compress matched logs for run {0}: {1}" -f $rid, $_.ToString())
+        }
+    }
+
+    $logZipUrl = if ($owner -and $repoName) { "https://github.com/$owner/$repoName/actions/runs/$rid.zip" } else { "https://github.com/<owner>/<repo>/actions/runs/$rid.zip" }
+
     $rec = [ordered]@{
         runId = $rid
-        lines = $matchesByRun[$rid]
-        # construct a reasonable logZip link placeholder (adjust repo path if needed)
-        logZip = "https://github.com/<owner>/<repo>/actions/runs/$rid.zip"
+        lines = $lines
+        logZip = $logZipUrl
+        localArchive = if ($paths.Count -gt 0) { $zipDst } else { $null }
     }
     $json = $rec | ConvertTo-Json -Depth 5
     $outJsonFile = Join-Path $artifactsDir ("run_${rid}_summary.json")
     Set-Content -LiteralPath $outJsonFile -Value $json -Encoding utf8
     Write-Output "Wrote JSON summary for run $rid -> $outJsonFile"
+    if ($paths.Count -gt 0) { Write-Output "Compressed matched logs for run $rid -> $zipDst" }
 }
