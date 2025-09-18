@@ -12,3 +12,20 @@ repos:
         language: system
         files: '^scripts/.*\.ps1$|^.*\.ps1$'
         always_run: true
+      - id: pwsh-autofix
+        name: PowerShell auto-fix (encoding & Start-Process -> Start-Process-Safe)
+        entry: pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\precommit_ps_autofix.ps1
+        language: system
+        files: '^scripts/.*\.ps1$|^.*\.ps1$'
+        always_run: true
+      - id: autofix-runner
+        name: Autofix runner (runs pre-commit --all-files --fix and applies diffs)
+        entry: pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\autofix_runner.ps1
+        language: system
+        always_run: true
+  - repo: https://github.com/charliermarsh/ruff-pre-commit
+    rev: v0.0.265
+    hooks:
+      - id: ruff
+        args: ["--fix"]
+        additional_dependencies: []
