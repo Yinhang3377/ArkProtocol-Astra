@@ -77,12 +77,31 @@ foreach ($r in $fails) {
 
     # run the GH run log scanner only if the downloaded run log exists and is recent (within 5 minutes)
     try {
-        $runLogPattern = Join-Path $PWD "ci_artifacts\gh_runs\run_$($r.id)*.log"
-        $recent = Get-ChildItem -LiteralPath (Split-Path $runLogPattern) -Filter "run_$($r.id)*.log" -File -ErrorAction SilentlyContinue | Where-Object { $_.LastWriteTime -gt (Get-Date).AddMinutes(-5) }
-        if ($recent) {
-            $logFile = $recent | Select-Object -First 1
+        # find the downloaded run log file (first match) and pass it directly to the scanner
+        $runLogDir = Join-Path $PWD 'ci_artifacts\gh_runs'
+        $match = Get-ChildItem -LiteralPath $runLogDir -Filter "run_$($r.id)*.log" -File -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($match) {
+            $logPath = $match.FullName
+            # try to read the file; retry up to 2 times (3 attempts total) with 3s backoff if locked/not ready
+            $maxAttempts = 3
+            $attempt = 0
+            $ready = $false
+            while ($attempt -lt $maxAttempts -and -not $ready) {
+                try {
+                    $null = Get-Content -LiteralPath $logPath -Raw -ErrorAction Stop
+                    $ready = $true
+                } catch {
+                    $attempt++
+                    if ($attempt -lt $maxAttempts) { Start-Sleep -Seconds 3 }
+                }
+            }
+            if (-not $ready) {
+                Write-Error "Run log $logPath not readable after $maxAttempts attempts"
+                exit 2
+            }
+
             $scanner = Join-Path $PSScriptRoot 'scan_gh_run_logs.ps1'
-            if (Test-Path -LiteralPath $scanner) { & $scanner -LogPath $logFile.FullName } else { Write-Host "Scanner not found: $scanner" -ForegroundColor Yellow }
+            if (Test-Path -LiteralPath $scanner) { & $scanner $logPath } else { Write-Host "Scanner not found: $scanner" -ForegroundColor Yellow }
         } else {
             Write-Host "No run log found for $($r.id); skipping scanner invocation" -ForegroundColor DarkGray
         }
